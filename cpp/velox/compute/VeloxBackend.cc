@@ -22,6 +22,7 @@
 
 #include "operators/functions/RegistrationAllFunctions.h"
 #include "operators/plannodes/RowVectorStream.h"
+#include "operators/plannodes/DPFilter.h"
 #include "utils/ConfigExtractor.h"
 
 #ifdef GLUTEN_ENABLE_QAT
@@ -121,6 +122,7 @@ void VeloxBackend::init(const std::unordered_map<std::string, std::string>& conf
     facebook::velox::serializer::presto::PrestoVectorSerde::registerVectorSerde();
   }
   velox::exec::Operator::registerOperator(std::make_unique<RowVectorStreamOperatorTranslator>());
+  velox::exec::Operator::registerOperator(std::make_unique<DPFilterOperatorTranslator>());
 
   initUdf();
 

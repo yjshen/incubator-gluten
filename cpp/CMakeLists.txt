@@ -40,7 +40,42 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS
     ON
     CACHE INTERNAL "")
 
+include(ExternalProject)
 project(gluten)
+
+set(RUST_PROJECT_DIR ${CMAKE_SOURCE_DIR}/../rust/)
+set(RUST_TARGET_DIR ${CMAKE_BINARY_DIR}/rust_target)
+set(RUST_LIB_FILE libdp_executor.a)
+set(RUST_LIB_PATH ${RUST_TARGET_DIR}/debug/${RUST_LIB_FILE})
+set(RUST_GENERATED_INCLUDE ${RUST_TARGET_DIR}/cxxbridge)
+file(MAKE_DIRECTORY ${RUST_GENERATED_INCLUDE})
+
+ExternalProject_Add(
+    rust_dp_executor
+    SOURCE_DIR ${RUST_PROJECT_DIR}
+    BINARY_DIR ${RUST_PROJECT_DIR}
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND cargo build --target-dir=${RUST_TARGET_DIR}
+    INSTALL_COMMAND ""
+    BUILD_ALWAYS TRUE
+)
+
+add_custom_command(
+    OUTPUT ${RUST_GENERATED_INCLUDE}/rust/cxx.h
+    COMMAND cargo build --target-dir=${RUST_TARGET_DIR}
+    WORKING_DIRECTORY ${RUST_PROJECT_DIR}
+    COMMENT "Generating Rust-C++ bridge headers"
+)
+
+add_custom_target(rust_headers
+    DEPENDS ${RUST_GENERATED_INCLUDE}/rust/cxx.h
+)
+add_dependencies(rust_dp_executor rust_headers)
+
+add_subdirectory(cpp_rust_interop)
+add_dependencies(cpp_rust_interop ensure_rust_lib)
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 option(BUILD_VELOX_BACKEND "Build Velox backend" ON)
 option(BUILD_TESTS "Build Tests" OFF)
@@ -60,7 +95,15 @@ option(ENABLE_ORC "Enable ORC" OFF)
 option(ENABLE_ABFS "Enable ABFS" OFF)
 
 set(root_directory ${PROJECT_BINARY_DIR})
+file(MAKE_DIRECTORY ${root_directory}/releases)
 get_filename_component(GLUTEN_HOME ${CMAKE_SOURCE_DIR} DIRECTORY)
+
+add_custom_target(ensure_rust_lib
+    COMMAND ${CMAKE_COMMAND} -E echo "Ensuring Rust library is built: ${RUST_LIB_PATH}"
+    COMMAND ${CMAKE_COMMAND} -E touch ${RUST_LIB_PATH}
+    DEPENDS rust_dp_executor
+    COMMENT "Verifying Rust library build"
+)
 
 if(NOT DEFINED VELOX_HOME)
   set(VELOX_HOME ${GLUTEN_HOME}/ep/build-velox/build/velox_ep)
@@ -78,6 +121,7 @@ else()
 endif()
 
 include(ResolveDependency)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../rust/target/cxxbridge)
 
 #
 # Compiler flags

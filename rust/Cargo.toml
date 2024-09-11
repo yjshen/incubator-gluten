@@ -1,0 +1,21 @@
+[package]
+name = "dp_executor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arrow = "53.0.0"
+prost = "0.13.2"
+bytes = "1.0"
+thiserror = "1.0"
+cxx = "1"
+
+[build-dependencies]
+prost-build = "0.13.2"
+cxx-build = "1.0"
+
+[lib]
+name = "dp_executor"
+# Change to cdylib to load dynamically when the issue is fixed
+# https://github.com/dtolnay/cxx/issues/1331
+crate-type = ["staticlib"]

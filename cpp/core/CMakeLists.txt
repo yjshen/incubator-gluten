@@ -209,7 +209,6 @@ set(SPARK_COLUMNAR_PLUGIN_SRCS
     jni/JniError.cc
     jni/JniCommon.cc)
 
-file(MAKE_DIRECTORY ${root_directory}/releases)
 add_library(gluten SHARED ${SPARK_COLUMNAR_PLUGIN_SRCS})
 add_dependencies(gluten jni_proto)
 

@@ -23,6 +23,12 @@
 #include "velox/exec/TableWriter.h"
 #include "velox/type/Filter.h"
 #include "velox/type/Type.h"
+#include <iostream>
+
+#include <cstdint>
+#include "rust/cxx.h"
+#include "cpp_rust_interop/bridge.h"
+#include "operators/plannodes/DPFilter.h"
 
 #include "utils/ConfigExtractor.h"
 
@@ -1083,13 +1089,48 @@ SubstraitToVeloxPlanConverter::processSortField(
 }
 
 core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::FilterRel& filterRel) {
+  std::cerr << "Entering toVeloxPlan for FilterRel" << std::endl;
   auto childNode = convertSingleInput<::substrait::FilterRel>(filterRel);
+  std::cerr << "Child node converted" << std::endl;
+
+  std::vector<uint8_t> serializedFilter;
+  size_t size = filterRel.ByteSizeLong();
+  serializedFilter.resize(size);
+
+  if (!filterRel.SerializeToArray(serializedFilter.data(), size)) {
+      std::cerr << "Failed to serialize FilterRel" << std::endl;
+  }
+  std::cerr << "FilterRel serialized, size: " << size << " bytes" << std::endl;
+
+  if (can_offload_to_dp_cpp(serializedFilter)) {
+    // Create DPFilterNode
+    std::cerr << "Can offload to DP, creating DPFilterNode" << std::endl;
+    auto dpFilterNode = std::make_shared<DPFilterNode>(
+        nextPlanNodeId(),
+        childNode->outputType(),
+        childNode,
+        exprConverter_->toVeloxExpr(filterRel.condition(), childNode->outputType())->toString(),
+        std::move(serializedFilter));
+
+    if (filterRel.has_common()) {
+        std::cerr << "FilterRel has common, processing emit" << std::endl;
+      return processEmit(filterRel.common(), std::move(dpFilterNode));
+    } else {
+      std::cerr << "Returning DPFilterNode" << std::endl;
+      return dpFilterNode;
+    }
+  }
+
+  std::cerr << "Failed to offload to DP, creating FilterNode in Velox" << std::endl;
+  // failed to offload to dp, do the filter in velox
   auto filterNode = std::make_shared<core::FilterNode>(
       nextPlanNodeId(), exprConverter_->toVeloxExpr(filterRel.condition(), childNode->outputType()), childNode);
 
   if (filterRel.has_common()) {
+    std::cerr << "FilterRel has common, processing emit" << std::endl;
     return processEmit(filterRel.common(), std::move(filterNode));
   } else {
+    std::cerr << "Returning FilterNode" << std::endl;
     return filterNode;
   }
 }
@@ -1310,31 +1351,47 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(
 }
 
 core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::Rel& rel) {
+  std::cerr << "Starting toVeloxPlan for substrait::Rel" << std::endl;
+  std::cerr << "Substrait Plan:" << std::endl;
+  std::cerr << rel.DebugString() << std::endl;
   if (rel.has_aggregate()) {
+    std::cerr << "Processing aggregate" << std::endl;
     return toVeloxPlan(rel.aggregate());
   } else if (rel.has_project()) {
+    std::cerr << "Processing project" << std::endl;
     return toVeloxPlan(rel.project());
   } else if (rel.has_filter()) {
+    std::cerr << "Processing filter" << std::endl;
     return toVeloxPlan(rel.filter());
   } else if (rel.has_join()) {
+    std::cerr << "Processing join" << std::endl;
     return toVeloxPlan(rel.join());
   } else if (rel.has_cross()) {
+    std::cerr << "Processing cross" << std::endl;
     return toVeloxPlan(rel.cross());
   } else if (rel.has_read()) {
+    std::cerr << "Processing read" << std::endl;
     return toVeloxPlan(rel.read());
   } else if (rel.has_sort()) {
+    std::cerr << "Processing sort" << std::endl;
     return toVeloxPlan(rel.sort());
   } else if (rel.has_expand()) {
+    std::cerr << "Processing expand" << std::endl;
     return toVeloxPlan(rel.expand());
   } else if (rel.has_generate()) {
+    std::cerr << "Processing generate" << std::endl;
     return toVeloxPlan(rel.generate());
   } else if (rel.has_fetch()) {
+    std::cerr << "Processing fetch" << std::endl;
     return toVeloxPlan(rel.fetch());
   } else if (rel.has_top_n()) {
+    std::cerr << "Processing top_n" << std::endl;
     return toVeloxPlan(rel.top_n());
   } else if (rel.has_window()) {
+    std::cerr << "Processing window" << std::endl;
     return toVeloxPlan(rel.window());
   } else if (rel.has_write()) {
+    std::cerr << "Processing write" << std::endl;
     return toVeloxPlan(rel.write());
   } else if (rel.has_windowgrouplimit()) {
     return toVeloxPlan(rel.windowgrouplimit());
