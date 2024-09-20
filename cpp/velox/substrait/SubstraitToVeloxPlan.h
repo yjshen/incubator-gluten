@@ -19,10 +19,18 @@
 
 #include "SubstraitToVeloxExpr.h"
 #include "TypeUtils.h"
+#include "DPToVeloxPlanExtension.h"
 #include "velox/connectors/hive/FileProperties.h"
 #include "velox/connectors/hive/TableHandle.h"
 #include "velox/core/PlanNode.h"
 #include "velox/dwio/common/Options.h"
+#include "build/core/proto/substrait/algebra.pb.h"
+#include "build/core/proto/substrait/plan.pb.h"
+#include "build/core/proto/substrait/type.pb.h"
+#include "build/core/proto/substrait/capabilities.pb.h"
+#include "build/core/proto/substrait/function.pb.h"
+#include "build/core/proto/substrait/parameterized_types.pb.h"
+#include "build/core/proto/substrait/type_expressions.pb.h"
 
 namespace gluten {
 class ResultIterator;
@@ -85,19 +93,19 @@ class SubstraitToVeloxPlanConverter {
   core::PlanNodePtr toVeloxPlan(const ::substrait::WindowGroupLimitRel& windowGroupLimitRel);
 
   /// Used to convert Substrait JoinRel into Velox PlanNode.
-  core::PlanNodePtr toVeloxPlan(const ::substrait::JoinRel& joinRel);
+  core::PlanNodePtr toVeloxPlan(const ::substrait::JoinRel& joinRel, const ::substrait::Rel& rel);
 
   /// Used to convert Substrait CrossRel into Velox PlanNode.
   core::PlanNodePtr toVeloxPlan(const ::substrait::CrossRel& crossRel);
 
   /// Used to convert Substrait AggregateRel into Velox PlanNode.
-  core::PlanNodePtr toVeloxPlan(const ::substrait::AggregateRel& aggRel);
+  core::PlanNodePtr toVeloxPlan(const ::substrait::AggregateRel& aggRel, const ::substrait::Rel& rel);
 
   /// Convert Substrait ProjectRel into Velox PlanNode.
-  core::PlanNodePtr toVeloxPlan(const ::substrait::ProjectRel& projectRel);
+  core::PlanNodePtr toVeloxPlan(const ::substrait::ProjectRel& projectRel, const ::substrait::Rel& rel);
 
   /// Convert Substrait FilterRel into Velox PlanNode.
-  core::PlanNodePtr toVeloxPlan(const ::substrait::FilterRel& filterRel);
+  core::PlanNodePtr toVeloxPlan(const ::substrait::FilterRel& filterRel, const ::substrait::Rel& rel);
 
   /// Convert Substrait FetchRel into Velox LimitNode.
   core::PlanNodePtr toVeloxPlan(const ::substrait::FetchRel& fetchRel);
@@ -109,7 +117,7 @@ class SubstraitToVeloxPlanConverter {
   core::PlanNodePtr toVeloxPlan(const ::substrait::ReadRel& readRel, const RowTypePtr& type);
 
   /// Convert Substrait SortRel into Velox OrderByNode.
-  core::PlanNodePtr toVeloxPlan(const ::substrait::SortRel& sortRel);
+  core::PlanNodePtr toVeloxPlan(const ::substrait::SortRel& sortRel, const ::substrait::Rel& rel);
 
   /// Convert Substrait ReadRel into Velox PlanNode.
   /// Index: the index of the partition this item belongs to.

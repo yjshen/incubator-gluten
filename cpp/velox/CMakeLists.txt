@@ -203,6 +203,7 @@ set(VELOX_SRCS
     substrait/VeloxToSubstraitExpr.cc
     substrait/VeloxToSubstraitPlan.cc
     substrait/VeloxToSubstraitType.cc
+    substrait/DPToVeloxPlanExtension.cc
     udf/UdfLoader.cc
     utils/VeloxArrowUtils.cc
     utils/ConfigExtractor.cc
@@ -233,8 +234,23 @@ target_include_directories(
   velox PUBLIC ${CMAKE_SYSTEM_INCLUDE_PATH} ${JNI_INCLUDE_DIRS}
                ${CMAKE_CURRENT_SOURCE_DIR} ${VELOX_HOME}/ ${VELOX_BUILD_PATH}/)
 
+target_include_directories(velox PUBLIC ${CMAKE_SOURCE_DIR} ${RUST_GENERATED_INCLUDE})
+
+add_dependencies(velox ensure_rust_lib)
+
 set_target_properties(velox PROPERTIES LIBRARY_OUTPUT_DIRECTORY
                                        ${root_directory}/releases)
+
+target_link_libraries(velox PUBLIC
+    cpp_rust_interop
+    ${RUST_LIB_PATH}
+)
+
+target_link_directories(velox PRIVATE ${root_directory}/releases)
+
+set_target_properties(velox PROPERTIES LINK_FLAGS
+    "-Wl,--no-as-needed -Wl,--whole-archive ${RUST_LIB_PATH} -Wl,--no-whole-archive"
+)
 
 # If folly is not installed in system lib paths, please add
 # `-DCMAKE_PREFIX_PATH="${folly lib path}" to cmake arguments. It is also
@@ -255,7 +271,7 @@ if(BUILD_JEMALLOC)
   target_link_libraries(velox PUBLIC jemalloc::libjemalloc)
 endif()
 
-target_link_libraries(velox PUBLIC gluten)
+target_link_libraries(velox PUBLIC gluten cpp_rust_interop)
 
 # Requires VELOX_MONO_LIBRARY=ON when building Velox.
 import_library(facebook::velox ${VELOX_BUILD_PATH}/lib/libvelox.a)
@@ -372,3 +388,11 @@ add_custom_command(
   POST_BUILD
   COMMAND ldd $<TARGET_FILE:velox> || true
   COMMENT "Checking ldd result of libvelox.so")
+
+# Add a custom command to print linker commands
+add_custom_command(TARGET velox POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E echo "Linker command:"
+    COMMAND ${CMAKE_COMMAND} -E echo "$<JOIN:$<TARGET_PROPERTY:velox,LINK_FLAGS>, >"
+    COMMAND ${CMAKE_COMMAND} -E echo "Linked libraries:"
+    COMMAND ${CMAKE_COMMAND} -E echo "$<JOIN:$<TARGET_PROPERTY:velox,LINK_LIBRARIES>, >"
+)
