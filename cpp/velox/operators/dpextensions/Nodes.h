@@ -113,14 +113,21 @@ public:
         return sources_;
     }
 
+    // Checks if the aggregation can spill to disk based on the query configuration
+    // @param queryConfig The query configuration
+    // @return true if aggregation spilling is enabled, false otherwise
     bool canSpill(const facebook::velox::core::QueryConfig& queryConfig) const {
         return queryConfig.aggregationSpillEnabled();
     }
 
+    // Checks if this is a partial aggregation step
+    // @return true if this is a partial aggregation, false otherwise
     bool isPartial() const {
         return original_node_->step() == facebook::velox::core::AggregationNode::Step::kPartial;
     }
 
+    // Checks if the input data is already pre-grouped
+    // @return true if the input is pre-grouped, false otherwise
     bool isPreGrouped() const {
         return original_node_->isPreGrouped();
     }
@@ -143,6 +150,9 @@ public:
         return sources_;
     }
 
+    // Checks if the order by operation can spill to disk based on the query configuration
+    // @param queryConfig The query configuration
+    // @return true if order by spilling is enabled, false otherwise
     bool canSpill(const facebook::velox::core::QueryConfig& queryConfig) const {
         return queryConfig.orderBySpillEnabled();
     }
@@ -166,6 +176,9 @@ public:
         return sources_;
     }
 
+    // Checks if the hash join can spill to disk based on the query configuration
+    // @param queryConfig The query configuration
+    // @return true if the original node can spill, false otherwise
     bool canSpill(const facebook::velox::core::QueryConfig& queryConfig) const {
         return original_node_->canSpill(queryConfig);
     }
@@ -187,6 +200,51 @@ public:
 
     const std::vector<facebook::velox::core::PlanNodePtr>& sources() const override {
         return sources_;
+    }
+
+    facebook::velox::core::JoinType joinType() const {
+        return original_node_->joinType();
+    }
+
+    // The following methods check for specific join types:
+    bool isInnerJoin() const {
+        return joinType() == facebook::velox::core::JoinType::kInner;
+    }
+
+    bool isLeftJoin() const {
+        return joinType() == facebook::velox::core::JoinType::kLeft;
+    }
+
+    bool isRightJoin() const {
+        return joinType() == facebook::velox::core::JoinType::kRight;
+    }
+
+    bool isFullJoin() const {
+        return joinType() == facebook::velox::core::JoinType::kFull;
+    }
+
+    bool isLeftSemiFilterJoin() const {
+        return joinType() == facebook::velox::core::JoinType::kLeftSemiFilter;
+    }
+
+    bool isLeftSemiProjectJoin() const {
+        return joinType() == facebook::velox::core::JoinType::kLeftSemiProject;
+    }
+
+    bool isRightSemiFilterJoin() const {
+        return joinType() == facebook::velox::core::JoinType::kRightSemiFilter;
+    }
+
+    bool isRightSemiProjectJoin() const {
+        return joinType() == facebook::velox::core::JoinType::kRightSemiProject;
+    }
+
+    bool isAntiJoin() const {
+        return joinType() == facebook::velox::core::JoinType::kAnti;
+    }
+
+    bool isPreservingProbeOrder() const {
+        return isInnerJoin() || isLeftJoin() || isAntiJoin();
     }
 
 private:
