@@ -23,6 +23,12 @@
 #include "velox/exec/TableWriter.h"
 #include "velox/type/Filter.h"
 #include "velox/type/Type.h"
+#include <iostream>
+
+#include <cstdint>
+#include "rust/cxx.h"
+#include "cpp_rust_interop/bridge.h"
+#include "operators/dpextensions/Nodes.h"
 
 #include "utils/ConfigExtractor.h"
 
@@ -264,7 +270,7 @@ std::string SubstraitToVeloxPlanConverter::toAggregationFunctionName(
   return baseName + suffix;
 }
 
-core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::JoinRel& sJoin) {
+core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::JoinRel& sJoin, const ::substrait::Rel& rel) {
   if (!sJoin.has_left()) {
     VELOX_FAIL("Left Rel is expected in JoinRel.");
   }
@@ -410,7 +416,7 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::
       getJoinOutputType(leftNode, rightNode, joinType));
 }
 
-core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::AggregateRel& aggRel) {
+core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::AggregateRel& aggRel, const ::substrait::Rel& rel) {
   auto childNode = convertSingleInput<::substrait::AggregateRel>(aggRel);
   core::AggregationNode::Step aggStep = toAggregationStep(aggRel);
   const auto& inputType = childNode->outputType();
@@ -487,7 +493,7 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::
   }
 }
 
-core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::ProjectRel& projectRel) {
+core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::ProjectRel& projectRel, const ::substrait::Rel& rel) {
   auto childNode = convertSingleInput<::substrait::ProjectRel>(projectRel);
   // Construct Velox Expressions.
   const auto& projectExprs = projectRel.expressions();
@@ -1055,7 +1061,7 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(
       childNode);
 }
 
-core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::SortRel& sortRel) {
+core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::SortRel& sortRel, const ::substrait::Rel& rel) {
   auto childNode = convertSingleInput<::substrait::SortRel>(sortRel);
   auto [sortingKeys, sortingOrders] = processSortField(sortRel.sorts(), childNode->outputType());
   return std::make_shared<core::OrderByNode>(
@@ -1082,15 +1088,18 @@ SubstraitToVeloxPlanConverter::processSortField(
   return {sortingKeys, sortingOrders};
 }
 
-core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::FilterRel& filterRel) {
+core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::FilterRel& filterRel, const ::substrait::Rel& rel) {
   auto childNode = convertSingleInput<::substrait::FilterRel>(filterRel);
   auto filterNode = std::make_shared<core::FilterNode>(
       nextPlanNodeId(), exprConverter_->toVeloxExpr(filterRel.condition(), childNode->outputType()), childNode);
 
+  auto dpFilterNodeOpt = tryCreateDPFilterNode(nextPlanNodeId(), filterNode, childNode, rel);
+  core::PlanNodePtr resultNode = dpFilterNodeOpt.value_or(std::move(filterNode));
+
   if (filterRel.has_common()) {
-    return processEmit(filterRel.common(), std::move(filterNode));
+    return processEmit(filterRel.common(), std::move(resultNode));
   } else {
-    return filterNode;
+    return resultNode;
   }
 }
 
@@ -1311,19 +1320,19 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(
 
 core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::Rel& rel) {
   if (rel.has_aggregate()) {
-    return toVeloxPlan(rel.aggregate());
+    return toVeloxPlan(rel.aggregate(), rel);
   } else if (rel.has_project()) {
-    return toVeloxPlan(rel.project());
+    return toVeloxPlan(rel.project(), rel);
   } else if (rel.has_filter()) {
-    return toVeloxPlan(rel.filter());
+    return toVeloxPlan(rel.filter(), rel);
   } else if (rel.has_join()) {
-    return toVeloxPlan(rel.join());
+    return toVeloxPlan(rel.join(), rel);
   } else if (rel.has_cross()) {
     return toVeloxPlan(rel.cross());
   } else if (rel.has_read()) {
     return toVeloxPlan(rel.read());
   } else if (rel.has_sort()) {
-    return toVeloxPlan(rel.sort());
+    return toVeloxPlan(rel.sort(), rel);
   } else if (rel.has_expand()) {
     return toVeloxPlan(rel.expand());
   } else if (rel.has_generate()) {
