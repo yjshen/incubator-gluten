@@ -89,4 +89,26 @@ public:
     }
 };
 
+class DPMergeJoinOperatorTranslator : public facebook::velox::exec::Operator::PlanNodeTranslator {
+    std::unique_ptr<facebook::velox::exec::Operator> toOperator(
+        facebook::velox::exec::DriverCtx* ctx,
+        int32_t id,
+        const facebook::velox::core::PlanNodePtr& node) override {
+        if (auto dpMergeJoinNode = std::dynamic_pointer_cast<const DPMergeJoinNode>(node)) {
+            return std::make_unique<DPMergeJoin>(id, ctx, dpMergeJoinNode);
+        }
+        return nullptr;
+    }
+
+    OperatorSupplier toOperatorSupplier(
+        const facebook::velox::core::PlanNodePtr& node) override {
+        if (auto dpMergeJoinNode = std::dynamic_pointer_cast<const DPMergeJoinNode>(node)) {
+            return [dpMergeJoinNode](int32_t operatorId, facebook::velox::exec::DriverCtx* ctx) {
+                return std::make_unique<DPMergeSource>(operatorId, ctx, dpMergeJoinNode);
+            };
+        }
+        return nullptr;
+    }
+};
+
 } // namespace gluten

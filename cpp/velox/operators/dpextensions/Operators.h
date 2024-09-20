@@ -79,6 +79,10 @@ public:
               spillConfig),
           serialized_substrait_(serialized_substrait) {}
 
+    /**
+     * @brief Initializes the operator by compiling the Substrait plan to a DFG instance.
+     * This method should be called before any processing begins.
+     */
     virtual void initialize() {
         if (!initialized_) {
             // Call Rust code to compile substrait to DFG instance
@@ -87,6 +91,10 @@ public:
         }
     }
 
+    /**
+     * @brief Closes the operator and releases resources.
+     * This method should be called when the operator is no longer needed.
+     */
     void close() override {
         Operator::close();
         dfgClose(dfg_instance_id_);
@@ -505,6 +513,256 @@ public:
 
 private:
     bool finished_ = false;    
+};
+
+class DPMergeSource : public DPBaseOperator {
+public:
+    DPMergeSource(
+        int32_t operatorId,
+        facebook::velox::exec::DriverCtx* driverCtx,
+        std::shared_ptr<const DPMergeJoinNode> dpMergeJoinNode)
+        : DPBaseOperator(
+              operatorId,
+              driverCtx,
+              dpMergeJoinNode,
+              "MergeSource",
+              dpMergeJoinNode->getSerializedSubstrait(),
+              std::nullopt) {}
+
+    void initialize() override {
+        if (!initialized_) {
+            initialized_ = true;
+            dfg_instance_id_ = compileDFGMergeSource(serialized_substrait_);
+        }
+    }
+
+    bool needsInput() const override {
+        return !state_.rlock()->atEnd;
+    }
+
+    void addInput(facebook::velox::RowVectorPtr input) override {
+        auto state = state_.wlock();
+        if (!state->atEnd) {
+            state->data = std::move(input);
+            notify(consumerPromise_);
+        }
+    }
+
+    facebook::velox::RowVectorPtr getOutput() override {
+        facebook::velox::RowVectorPtr result;
+        facebook::velox::ContinueFuture future;
+        auto reason = next(&future, &result);
+        if (reason == facebook::velox::exec::BlockingReason::kNotBlocked) {
+            return result;
+        }
+        return nullptr;
+    }
+
+    void noMoreInput() {
+        auto state = state_.wlock();
+        state->atEnd = true;
+        notify(consumerPromise_);
+    }
+
+    facebook::velox::exec::BlockingReason isBlocked(facebook::velox::ContinueFuture* future) override {
+        auto state = state_.rlock();
+        if (state->data == nullptr && !state->atEnd) {
+            producerPromise_ = facebook::velox::ContinuePromise("DPMergeSource::isBlocked");
+            *future = producerPromise_->getSemiFuture();
+            return facebook::velox::exec::BlockingReason::kWaitForProducer;
+        }
+        return facebook::velox::exec::BlockingReason::kNotBlocked;
+    }
+
+    bool isFinished() override {
+        return state_.rlock()->atEnd && state_.rlock()->data == nullptr;
+    }
+
+    /**
+     * @brief Retrieves the next row vector from the DFG merge source.
+     *
+     * This method is responsible for fetching the next row vector from the DFG merge source.
+     * It checks the current state of the operator to determine if it should wait for more input
+     * or if it can proceed with fetching the next row vector.
+     *
+     * @param future The future object used to handle blocking scenarios.
+     * @param data The pointer to store the resulting row vector.
+     * 
+     * @return The blocking reason indicating if the operation is blocked or not.
+     */
+    facebook::velox::exec::BlockingReason next(
+        facebook::velox::ContinueFuture* future,
+        facebook::velox::RowVectorPtr* data) {
+        auto state = state_.wlock();
+        if (state->data != nullptr) {
+            *data = std::move(state->data);
+            notify(producerPromise_);
+            return facebook::velox::exec::BlockingReason::kNotBlocked;
+        }
+
+        if (state->atEnd) {
+            *data = nullptr;
+            return facebook::velox::exec::BlockingReason::kNotBlocked;
+        }
+
+        const uint8_t* outputPtr = dfgMergeSourceNext(dfg_instance_id_);
+        if (outputPtr != nullptr) {
+            *data = fromRawPointer(outputPtr);
+            return facebook::velox::exec::BlockingReason::kNotBlocked;
+        }
+
+        consumerPromise_ = facebook::velox::ContinuePromise("DPMergeSource::next");
+        *future = consumerPromise_->getSemiFuture();
+        return facebook::velox::exec::BlockingReason::kWaitForProducer;
+    }
+
+    /**
+     * @brief Enqueues a row vector into the DFG merge source.
+     *
+     * This method is responsible for enqueuing a row vector into the DFG merge source.
+     * It checks the current state of the operator to determine if it should wait for more input
+     * or if it can proceed with enqueuing the row vector.
+     *
+     * @param data The row vector to be enqueued.
+     * @param future The future object used to handle blocking scenarios.
+     * 
+     * @return The blocking reason indicating if the operation is blocked or not.
+     */
+    facebook::velox::exec::BlockingReason enqueue(
+        facebook::velox::RowVectorPtr data,
+        facebook::velox::ContinueFuture* future) {
+        auto state = state_.wlock();
+        if (state->atEnd) {
+            notify(consumerPromise_);
+            return facebook::velox::exec::BlockingReason::kNotBlocked;
+        }
+
+        if (data == nullptr) {
+            state->atEnd = true;
+            dfgMergeSourceNoMoreInput(dfg_instance_id_);
+            notify(consumerPromise_);
+            return facebook::velox::exec::BlockingReason::kNotBlocked;
+        }
+
+        auto inputPtr = toRawPointer(data);
+        dfgMergeSourceEnqueue(dfg_instance_id_, inputPtr);
+
+        if (dfgMergeSourceIsFull(dfg_instance_id_)) {
+            producerPromise_ = facebook::velox::ContinuePromise("DPMergeSource::enqueue");
+            *future = producerPromise_->getSemiFuture();
+            return facebook::velox::exec::BlockingReason::kWaitForConsumer;
+        }
+
+        notify(consumerPromise_);
+        return facebook::velox::exec::BlockingReason::kNotBlocked;
+    }
+
+    void close() override {
+        dfgMergeSourceClose(dfg_instance_id_);
+        state_.wlock()->data = nullptr;
+        state_.wlock()->atEnd = true;
+        notify(producerPromise_);
+        notify(consumerPromise_);
+        DPBaseOperator::close();
+    }
+
+private:
+    struct State {
+        bool atEnd = false;
+        /**
+         * @brief The current data row vector being processed.
+         *
+         * This pointer holds the reference to the current row vector that the operator
+         * is processing. It is used to pass data between different stages of the data
+         * flow within the operator.
+         */
+        facebook::velox::RowVectorPtr data;
+    };
+
+    folly::Synchronized<State> state_;
+
+    std::optional<facebook::velox::ContinuePromise> consumerPromise_;
+    std::optional<facebook::velox::ContinuePromise> producerPromise_;
+
+    facebook::velox::exec::BlockingReason waitForConsumer(facebook::velox::ContinueFuture* future) {
+        producerPromise_ = facebook::velox::ContinuePromise("DPMergeSource::waitForConsumer");
+        *future = producerPromise_->getSemiFuture();
+        return facebook::velox::exec::BlockingReason::kWaitForConsumer;
+    }
+
+    void notify(std::optional<facebook::velox::ContinuePromise>& promise) {
+        if (promise) {
+            promise->setValue();
+            promise.reset();
+        }
+    }
+    
+};
+
+class DPMergeJoin : public DPBaseOperator {
+public:
+    DPMergeJoin(
+        int32_t operatorId,
+        facebook::velox::exec::DriverCtx* driverCtx,
+        std::shared_ptr<const DPMergeJoinNode> dpMergeJoinNode)
+        : DPBaseOperator(
+              operatorId,
+              driverCtx,
+              dpMergeJoinNode,
+              "MergeJoin",
+              dpMergeJoinNode->getSerializedSubstrait(),
+              std::nullopt),
+          dpMergeJoinNode_(std::move(dpMergeJoinNode)) {}
+
+    void initialize() override {
+        if (!initialized_) {
+            initialized_ = true;
+            dfg_instance_id_ = compileDFGMergeJoin(serialized_substrait_);
+        }
+    }
+
+    bool needsInput() const override {
+        return dfgMergeJoinNeedsInput(dfg_instance_id_);
+    }
+
+    void addInput(facebook::velox::RowVectorPtr input) override {
+        auto inputPtr = toRawPointer(input);
+        dfgMergeJoinAddInput(dfg_instance_id_, inputPtr);
+    }
+
+    facebook::velox::exec::BlockingReason isBlocked(facebook::velox::ContinueFuture* future) override {
+        if (dfgMergeJoinIsBlocked(dfg_instance_id_)) {
+            *future = std::move(futureRightSideInput_);
+            return facebook::velox::exec::BlockingReason::kWaitForMergeJoinRightSide;
+        }
+        return facebook::velox::exec::BlockingReason::kNotBlocked;
+    }
+
+    facebook::velox::RowVectorPtr getOutput() override {
+        const uint8_t* outputPtr = dfgMergeJoinGetOutput(dfg_instance_id_);
+        if (outputPtr == nullptr) {
+            return nullptr;
+        }
+        return fromRawPointer(outputPtr);
+    }
+
+    bool isFinished() override {
+        return dfgMergeJoinIsFinished(dfg_instance_id_);
+    }
+
+    void noMoreInput() override {
+        Operator::noMoreInput();
+        dfgMergeJoinNoMoreInput(dfg_instance_id_);
+    }
+
+    void close() override {
+        dfgMergeJoinClose(dfg_instance_id_);
+        DPBaseOperator::close();
+    }
+
+private:
+    std::shared_ptr<const DPMergeJoinNode> dpMergeJoinNode_;
+    facebook::velox::ContinueFuture futureRightSideInput_{facebook::velox::ContinueFuture::makeEmpty()};
 };
 
 

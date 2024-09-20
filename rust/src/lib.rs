@@ -41,6 +41,50 @@ mod ffi {
 
         /// Trigger a spill and return the freed memory size in bytes.
         fn spill(dfg_instance_id: u64) -> u64;
+
+        // MergeSource functions
+        /// Compile the DFG for merge source.
+        fn compile_dfg_merge_source(serialized_rel: &[u8]) -> u64;
+
+        /// Get the next bunch of records from the merge source.
+        fn dfg_merge_source_next(dfg_instance_id: u64) -> *const u8;
+
+        /// Enqueue the input to the merge source.
+        unsafe fn dfg_merge_source_enqueue(dfg_instance_id: u64, input_ptr: *const u8);
+
+        /// Check if the merge source is full.
+        fn dfg_merge_source_is_full(dfg_instance_id: u64) -> bool;
+
+        /// Notify the DP runtime that there is no more input to the merge source.
+        fn dfg_merge_source_no_more_input(dfg_instance_id: u64);
+
+        /// Close the merge source and release all resources.
+        fn dfg_merge_source_close(dfg_instance_id: u64);
+
+        // MergeJoin functions
+        /// Compile the DFG for merge join.
+        fn compile_dfg_merge_join(serialized_rel: &[u8]) -> u64;
+
+        /// Check if the merge join needs input.
+        fn dfg_merge_join_needs_input(dfg_instance_id: u64) -> bool;
+
+        /// Add the input to the merge join.
+        unsafe fn dfg_merge_join_add_input(dfg_instance_id: u64, input_ptr: *const u8);
+
+        /// Check if the merge join is blocked.
+        fn dfg_merge_join_is_blocked(dfg_instance_id: u64) -> bool;
+
+        /// Get the output from the merge join.
+        fn dfg_merge_join_get_output(dfg_instance_id: u64) -> *const u8;
+
+        /// Check if the merge join is finished.
+        fn dfg_merge_join_is_finished(dfg_instance_id: u64) -> bool;
+
+        /// Notify the DP runtime that there is no more input to the merge join.
+        fn dfg_merge_join_no_more_input(dfg_instance_id: u64);
+
+        /// Close the merge join and release all resources.
+        fn dfg_merge_join_close(dfg_instance_id: u64);
     }
 
     unsafe extern "C++" {
@@ -112,4 +156,74 @@ pub fn memory_usage(_dfg_instance_id: u64) -> u64 {
 /// Trigger a spill and return the freed memory size in bytes.
 pub fn spill(_dfg_instance_id: u64) -> u64 {
     0
+}
+
+/// Compile the DFG for merge source.
+pub fn compile_dfg_merge_source(_serialized_rel: &[u8]) -> u64 {
+    1
+}
+
+/// Get the next bunch of records from the merge source.
+pub fn dfg_merge_source_next(_dfg_instance_id: u64) -> *const u8 {
+    todo!("Implement merge source next")
+}
+
+/// Enqueue the input to the merge source.
+pub unsafe fn dfg_merge_source_enqueue(_dfg_instance_id: u64, _input_ptr: *const u8) {
+    todo!("Implement merge source enqueue")
+}
+
+/// Check if the merge source is full.
+pub fn dfg_merge_source_is_full(_dfg_instance_id: u64) -> bool {
+    todo!("Implement merge source is full")
+}
+
+/// Notify the DP runtime that there is no more input to the merge source.
+pub fn dfg_merge_source_no_more_input(_dfg_instance_id: u64) {
+    todo!("Implement merge source no more input")
+}
+
+/// Close the merge source and release all resources.
+pub fn dfg_merge_source_close(_dfg_instance_id: u64) {
+    todo!("Implement merge source close")
+}
+
+/// Compile the DFG for merge join.
+pub fn compile_dfg_merge_join(_serialized_rel: &[u8]) -> u64 {
+    1
+}
+
+/// Check if the merge join needs input.
+pub fn dfg_merge_join_needs_input(_dfg_instance_id: u64) -> bool {
+    todo!("Implement merge join needs input")
+}
+
+/// Add the input to the merge join.
+pub unsafe fn dfg_merge_join_add_input(_dfg_instance_id: u64, _input_ptr: *const u8) {
+    todo!("Implement merge join add input")
+}
+
+/// Check if the merge join is blocked.
+pub fn dfg_merge_join_is_blocked(_dfg_instance_id: u64) -> bool {
+    todo!("Implement merge join is blocked")
+}
+
+/// Get the output from the merge join.
+pub fn dfg_merge_join_get_output(_dfg_instance_id: u64) -> *const u8 {
+    todo!("Implement merge join get output")
+}
+
+/// Check if the merge join is finished.
+pub fn dfg_merge_join_is_finished(_dfg_instance_id: u64) -> bool {
+    todo!("Implement merge join is finished")
+}
+
+/// Notify the DP runtime that there is no more input to the merge join.
+pub fn dfg_merge_join_no_more_input(_dfg_instance_id: u64) {
+    todo!("Implement merge join no more input")
+}
+
+/// Close the merge join and release all resources.
+pub fn dfg_merge_join_close(_dfg_instance_id: u64) {
+    
 }
