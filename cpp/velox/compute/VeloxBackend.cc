@@ -23,6 +23,7 @@
 #include "operators/functions/RegistrationAllFunctions.h"
 #include "operators/plannodes/RowVectorStream.h"
 #include "operators/dpextensions/Translators.h"
+#include "operators/dpextensions/Fusion.h"
 #include "utils/ConfigExtractor.h"
 
 #ifdef GLUTEN_ENABLE_QAT
@@ -130,6 +131,8 @@ void VeloxBackend::init(const std::unordered_map<std::string, std::string>& conf
   velox::exec::Operator::registerOperator(std::make_unique<DPOrderByOperatorTranslator>());
   velox::exec::Operator::registerOperator(std::make_unique<DPAggregateOperatorTranslator>());
   velox::exec::Operator::registerOperator(std::make_unique<DPHashJoinOperatorTranslator>());
+
+  registerDPOperatorConsolidationAdapter();
   // -------- DP operators translator end --------
 
   initUdf();

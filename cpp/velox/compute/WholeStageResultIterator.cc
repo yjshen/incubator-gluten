@@ -232,7 +232,7 @@ int64_t WholeStageResultIterator::spillFixedSize(int64_t size) {
   std::string logPrefix{"Spill[" + poolName + "]: "};
   int64_t shrunken = memoryManager_->shrink(size);
   if (spillStrategy_ == "auto") {
-    if (task_->numThreads() != 0) {
+    if (task_->getNumThreads() != 0) {
       // Task should have zero running threads, otherwise there's
       // possibility that this spill call hangs. See https://github.com/apache/incubator-gluten/issues/7243.
       // As of now, non-zero running threads usually happens when:

@@ -363,7 +363,7 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::
 
   } else {
     // Create HashJoinNode node
-    return std::make_shared<core::HashJoinNode>(
+    auto hashJoinNode = std::make_shared<core::HashJoinNode>(
         nextPlanNodeId(),
         joinType,
         isNullAwareAntiJoin,
@@ -373,6 +373,9 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::
         leftNode,
         rightNode,
         getJoinOutputType(leftNode, rightNode, joinType));
+
+    auto dpHashJoinNodeOpt = tryCreateDPHashJoinNode(nextPlanNodeId(), hashJoinNode, leftNode, rightNode, rel);
+    return dpHashJoinNodeOpt.value_or(std::move(hashJoinNode));
   }
 }
 
@@ -486,10 +489,13 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::
       ignoreNullKeys,
       childNode);
 
+  auto dpAggregationNodeOpt = tryCreateDPAggregateNode(nextPlanNodeId(), aggregationNode, childNode, rel);
+  auto resultNode = dpAggregationNodeOpt.value_or(std::move(aggregationNode));
+
   if (aggRel.has_common()) {
-    return processEmit(aggRel.common(), std::move(aggregationNode));
+    return processEmit(aggRel.common(), std::move(resultNode));
   } else {
-    return aggregationNode;
+    return resultNode;
   }
 }
 
@@ -524,6 +530,7 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::
     colIdx += 1;
   }
 
+  std::shared_ptr<core::ProjectNode> projectNode;
   if (projectRel.has_common()) {
     auto relCommon = projectRel.common();
     const auto& emit = relCommon.emit();
@@ -535,12 +542,15 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::
       emitProjectNames[i] = projectNames[mapId];
       emitExpressions[i] = expressions[mapId];
     }
-    return std::make_shared<core::ProjectNode>(
-        nextPlanNodeId(), std::move(emitProjectNames), std::move(emitExpressions), std::move(childNode));
+    projectNode = std::make_shared<core::ProjectNode>(
+        nextPlanNodeId(), std::move(emitProjectNames), std::move(emitExpressions), childNode);
   } else {
-    return std::make_shared<core::ProjectNode>(
-        nextPlanNodeId(), std::move(projectNames), std::move(expressions), std::move(childNode));
+    projectNode = std::make_shared<core::ProjectNode>(
+        nextPlanNodeId(), std::move(projectNames), std::move(expressions), childNode);
   }
+
+  auto dpProjectNodeOpt = tryCreateDPProjectNode(nextPlanNodeId(), projectNode, childNode, rel);
+  return dpProjectNodeOpt.value_or(std::move(projectNode));
 }
 
 std::shared_ptr<connector::hive::LocationHandle> makeLocationHandle(
@@ -1064,8 +1074,11 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(
 core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::SortRel& sortRel, const ::substrait::Rel& rel) {
   auto childNode = convertSingleInput<::substrait::SortRel>(sortRel);
   auto [sortingKeys, sortingOrders] = processSortField(sortRel.sorts(), childNode->outputType());
-  return std::make_shared<core::OrderByNode>(
+  auto orderByNode = std::make_shared<core::OrderByNode>(
       nextPlanNodeId(), sortingKeys, sortingOrders, false /*isPartial*/, childNode);
+
+  auto dpOrderByNodeOpt = tryCreateDPOrderByNode(nextPlanNodeId(), orderByNode, childNode, rel);
+  return dpOrderByNodeOpt.value_or(std::move(orderByNode));
 }
 
 std::pair<std::vector<core::FieldAccessTypedExprPtr>, std::vector<core::SortOrder>>
@@ -1094,7 +1107,7 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::
       nextPlanNodeId(), exprConverter_->toVeloxExpr(filterRel.condition(), childNode->outputType()), childNode);
 
   auto dpFilterNodeOpt = tryCreateDPFilterNode(nextPlanNodeId(), filterNode, childNode, rel);
-  core::PlanNodePtr resultNode = dpFilterNodeOpt.value_or(std::move(filterNode));
+  auto resultNode = dpFilterNodeOpt.value_or(std::move(filterNode));
 
   if (filterRel.has_common()) {
     return processEmit(filterRel.common(), std::move(resultNode));
@@ -1319,6 +1332,7 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(
 }
 
 core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::Rel& rel) {
+  std::cerr << "toVeloxPlan for " << rel.DebugString() << std::endl;
   if (rel.has_aggregate()) {
     return toVeloxPlan(rel.aggregate(), rel);
   } else if (rel.has_project()) {
