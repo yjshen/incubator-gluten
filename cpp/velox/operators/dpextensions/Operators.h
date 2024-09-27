@@ -11,6 +11,7 @@
 #include "velox/exec/Operator.h"
 #include "cpp_rust_interop/bridge.h"
 #include <cstdint>
+#include <iostream>
 
 namespace gluten {
 
@@ -18,7 +19,9 @@ class DPBaseOperator : public facebook::velox::exec::Operator {
 protected:
     bool initialized_ = false;
     uint64_t dfg_instance_id_ = 0;
-    const std::vector<uint8_t>& serialized_substrait_;
+    std::vector<uint8_t> serialized_substrait_;
+    std::string name_;
+    std::shared_ptr<const facebook::velox::core::PlanNode> planNode_;
 
 public:
     DPBaseOperator(
@@ -27,7 +30,20 @@ public:
         const std::shared_ptr<const facebook::velox::core::PlanNode>& planNode,
         const std::vector<uint8_t>& serialized_substrait)
         : Operator(driverCtx, planNode->outputType(), operatorId, planNode->id(), planNode->name().data()),
-          serialized_substrait_(serialized_substrait) {}
+          serialized_substrait_(serialized_substrait),
+          name_(planNode->name().data()),
+          planNode_(planNode) {}
+
+    DPBaseOperator(
+        int32_t operatorId,
+        facebook::velox::exec::DriverCtx* driverCtx,
+        const std::shared_ptr<const facebook::velox::core::PlanNode>& planNode,
+        std::string operatorType,
+        const std::vector<uint8_t>& serialized_substrait)
+        : Operator(driverCtx, planNode->outputType(), operatorId, planNode->id(), operatorType),
+          serialized_substrait_(serialized_substrait),
+          name_(operatorType),
+          planNode_(planNode) {}
 
 
     // Constructor with spillConfig
@@ -44,8 +60,11 @@ public:
               planNode->id(),
               planNode->name().data(),
               spillConfig),
-          serialized_substrait_(serialized_substrait) {}
+          serialized_substrait_(serialized_substrait),
+          name_(planNode->name().data()),
+          planNode_(planNode) {}
 
+    // Constructor with spillConfig
     DPBaseOperator(
         int32_t operatorId,
         facebook::velox::exec::DriverCtx* driverCtx,
@@ -60,7 +79,9 @@ public:
               planNode->id(),
               operatorType,
               spillConfig),
-          serialized_substrait_(serialized_substrait) {}
+          serialized_substrait_(serialized_substrait),
+          name_(operatorType),
+          planNode_(planNode) {}
 
     DPBaseOperator(
         int32_t operatorId,
@@ -77,7 +98,9 @@ public:
               planNode->id(),
               operatorType,
               spillConfig),
-          serialized_substrait_(serialized_substrait) {}
+          serialized_substrait_(serialized_substrait),
+          name_(operatorType),
+          planNode_(planNode) {}
 
     /**
      * @brief Initializes the operator by compiling the Substrait plan to a DFG instance.
@@ -100,6 +123,23 @@ public:
         dfgClose(dfg_instance_id_);
     }
 
+    std::string toString() const override {
+        std::stringstream out;
+        out << operatorType() << "[" << planNodeId() << "] " << operatorId() << " " << name_;
+        return out.str();
+    }
+
+    /**
+     * Overwrite the name of the operator.
+     * 
+     * @param newName the new name of the operator.
+     */
+    void setName(std::string& newName) {
+        name_ = newName;
+    }
+
+    virtual std::unique_ptr<DPBaseOperator> clone() const = 0;
+
 protected:
     const uint8_t* toRawPointer(const facebook::velox::RowVectorPtr& input) {
         return reinterpret_cast<const uint8_t*>(input.get());
@@ -111,6 +151,10 @@ protected:
                 reinterpret_cast<facebook::velox::RowVector*>(const_cast<uint8_t*>(outputPtr))
             )
         );
+    }
+
+    std::string fusedOperatorType() const {
+        return operatorType() + "*";
     }
 };
 
@@ -125,6 +169,27 @@ public:
               driverCtx,
               dpProjectNode,
               dpProjectNode->getSerializedSubstrait()) {}
+
+    DPProject(
+        int32_t operatorId,
+        facebook::velox::exec::DriverCtx* driverCtx,
+        std::shared_ptr<const DPProjectNode> dpProjectNode,
+        std::string operatorType)
+        : DPBaseOperator(
+              operatorId,
+              driverCtx,
+              dpProjectNode,
+              operatorType,
+              dpProjectNode->getSerializedSubstrait()) {}
+
+    std::unique_ptr<DPBaseOperator> clone() const override {
+        return std::make_unique<DPProject>(
+            -1,
+            operatorCtx_->driverCtx(),
+            std::static_pointer_cast<const DPProjectNode>(planNode_),
+            fusedOperatorType()
+        );
+    }
 
     bool needsInput() const override {
         return !input_;
@@ -171,6 +236,27 @@ public:
               driverCtx,
               dpFilterNode,
               dpFilterNode->getSerializedSubstrait()) {}
+
+    DPFilter(
+        int32_t operatorId,
+        facebook::velox::exec::DriverCtx* driverCtx,
+        std::shared_ptr<const DPFilterNode> dpFilterNode,
+        std::string operatorType)
+        : DPBaseOperator(
+              operatorId,
+              driverCtx,
+              dpFilterNode,
+              operatorType,
+              dpFilterNode->getSerializedSubstrait()) {}
+
+    std::unique_ptr<DPBaseOperator> clone() const override {
+        return std::make_unique<DPFilter>(
+            -1,
+            operatorCtx_->driverCtx(),
+            std::static_pointer_cast<const DPFilterNode>(planNode_),
+            fusedOperatorType()
+        );
+    }
 
     bool needsInput() const override {
         return !input_;
@@ -227,6 +313,29 @@ public:
                ? driverCtx->makeSpillConfig(operatorId)
                : std::nullopt) {}
 
+    DPOrderBy(
+        int32_t operatorId,
+        facebook::velox::exec::DriverCtx* driverCtx,
+        std::shared_ptr<const DPOrderByNode> dpOrderByNode,
+        std::string operatorType)
+        : DPBaseOperator(
+              operatorId,
+              driverCtx,
+              dpOrderByNode,
+              operatorType,
+              dpOrderByNode->getSerializedSubstrait(),
+              dpOrderByNode->canSpill(driverCtx->queryConfig())
+               ? driverCtx->makeSpillConfig(operatorId)
+               : std::nullopt) {}
+
+    std::unique_ptr<DPBaseOperator> clone() const override {
+        return std::make_unique<DPOrderBy>(
+            -1,
+            operatorCtx_->driverCtx(),
+            std::static_pointer_cast<const DPOrderByNode>(planNode_),
+            fusedOperatorType()
+        );
+    }
 
     bool needsInput() const override {
         return !finished_;
@@ -287,12 +396,37 @@ public:
               operatorId,
               driverCtx,
               dpAggregateNode,
-              dpAggregateNode->isPartial() ? "PartialHashAggregate" : "HashAggregate",
+              dpAggregateNode->isPartial() ? "DPPartialHashAggregate" : "DPHashAggregate",
               dpAggregateNode->getSerializedSubstrait(),
               dpAggregateNode->canSpill(driverCtx->queryConfig())
                ? driverCtx->makeSpillConfig(operatorId)
                : std::nullopt),
                 isPartialOutput(dpAggregateNode->isPartial()) {}
+
+    DPHashAggregate(
+        int32_t operatorId,
+        facebook::velox::exec::DriverCtx* driverCtx,
+        std::shared_ptr<const DPAggregateNode> dpAggregateNode,
+        std::string operatorType)
+        : DPBaseOperator(
+              operatorId,
+              driverCtx,
+              dpAggregateNode,
+              operatorType,
+              dpAggregateNode->getSerializedSubstrait(),
+              dpAggregateNode->canSpill(driverCtx->queryConfig())
+               ? driverCtx->makeSpillConfig(operatorId)
+               : std::nullopt),
+              isPartialOutput(dpAggregateNode->isPartial()) {}
+
+    std::unique_ptr<DPBaseOperator> clone() const override {
+        return std::make_unique<DPHashAggregate>(
+            -1,
+            operatorCtx_->driverCtx(),
+            std::static_pointer_cast<const DPAggregateNode>(planNode_),
+            fusedOperatorType()
+        );
+    }
 
     bool needsInput() const override {
         return !noMoreInput_;
@@ -359,11 +493,33 @@ public:
               operatorId,
               driverCtx,
               dpAggregateNode,
-              dpAggregateNode->isPartial() ? "PartialStreamingAggregate" : "StreamingAggregate",
+              dpAggregateNode->isPartial() ? "DPPartialStreamingAggregate" : "DPStreamingAggregate",
               dpAggregateNode->getSerializedSubstrait(),
               std::nullopt),
                isPartialOutput(dpAggregateNode->isPartial()) {}
 
+    DPStreamingAggregate(
+        int32_t operatorId,
+        facebook::velox::exec::DriverCtx* driverCtx,
+        std::shared_ptr<const DPAggregateNode> dpAggregateNode,
+        std::string operatorType)
+        : DPBaseOperator(
+              operatorId,
+              driverCtx,
+              dpAggregateNode,
+              operatorType,
+              dpAggregateNode->getSerializedSubstrait(),
+              std::nullopt),
+              isPartialOutput(dpAggregateNode->isPartial()) {}
+
+    std::unique_ptr<DPBaseOperator> clone() const override {
+        return std::make_unique<DPStreamingAggregate>(
+            -1,
+            operatorCtx_->driverCtx(),
+            std::static_pointer_cast<const DPAggregateNode>(planNode_),
+            fusedOperatorType()
+        );
+    }
 
     bool needsInput() const override {
         return true;
@@ -424,11 +580,35 @@ public:
               driverCtx,
               true,
               dpHashJoinNode,
-              "HashJoinBuild",
+              "DPHashJoinBuild",
               dpHashJoinNode->getSerializedSubstrait(),
               // TODO: avoid spill for build side for now for simplicity
               // TODO: add spill config later
               std::nullopt) {}
+
+    DPHashJoinBuild(
+        int32_t operatorId,
+        facebook::velox::exec::DriverCtx* driverCtx,
+        std::shared_ptr<const DPHashJoinNode> dpHashJoinNode,
+        std::string operatorType)
+        : DPBaseOperator(
+              operatorId,
+              driverCtx,
+              dpHashJoinNode,
+              operatorType,
+              dpHashJoinNode->getSerializedSubstrait(),
+              // TODO: avoid spill for build side for now for simplicity
+              // TODO: add spill config later
+              std::nullopt) {}
+
+    std::unique_ptr<DPBaseOperator> clone() const override {
+        return std::make_unique<DPHashJoinBuild>(
+            -1,
+            operatorCtx_->driverCtx(),
+            std::static_pointer_cast<const DPHashJoinNode>(planNode_),
+            fusedOperatorType()
+        );
+    }
 
     bool needsInput() const override {
         return !buildFinished_;
@@ -472,11 +652,35 @@ public:
               operatorId,
               driverCtx,
               dpHashJoinNode,
-              "HashJoinProbe",
+              "DPHashJoinProbe",
               dpHashJoinNode->getSerializedSubstrait(),
               dpHashJoinNode->canSpill(driverCtx->queryConfig())
                ? driverCtx->makeSpillConfig(operatorId)
                : std::nullopt) {}
+
+    DPHashJoinProbe(
+        int32_t operatorId,
+        facebook::velox::exec::DriverCtx* driverCtx,
+        std::shared_ptr<const DPHashJoinNode> dpHashJoinNode,
+        std::string operatorType)
+        : DPBaseOperator(
+              operatorId,
+              driverCtx,
+              dpHashJoinNode,
+              operatorType,
+              dpHashJoinNode->getSerializedSubstrait(),
+              dpHashJoinNode->canSpill(driverCtx->queryConfig())
+               ? driverCtx->makeSpillConfig(operatorId)
+               : std::nullopt) {}
+
+    std::unique_ptr<DPBaseOperator> clone() const override {
+        return std::make_unique<DPHashJoinProbe>(
+            -1,
+            operatorCtx_->driverCtx(),
+            std::static_pointer_cast<const DPHashJoinNode>(planNode_),
+            fusedOperatorType()
+        );
+    }
 
     bool needsInput() const override {
         return !input_;
@@ -525,9 +729,31 @@ public:
               operatorId,
               driverCtx,
               dpMergeJoinNode,
-              "MergeSource",
+              "DPMergeSource",
               dpMergeJoinNode->getSerializedSubstrait(),
               std::nullopt) {}
+
+    DPMergeSource(
+        int32_t operatorId,
+        facebook::velox::exec::DriverCtx* driverCtx,
+        std::shared_ptr<const DPMergeJoinNode> dpMergeJoinNode,
+        std::string operatorType)
+        : DPBaseOperator(
+              operatorId,
+              driverCtx,
+              dpMergeJoinNode,
+              operatorType,
+              dpMergeJoinNode->getSerializedSubstrait(),
+              std::nullopt) {}
+
+    std::unique_ptr<DPBaseOperator> clone() const override {
+        return std::make_unique<DPMergeSource>(
+            -1,
+            operatorCtx_->driverCtx(),
+            std::static_pointer_cast<const DPMergeJoinNode>(planNode_),
+            fusedOperatorType()
+        );
+    }
 
     void initialize() override {
         if (!initialized_) {
@@ -709,10 +935,32 @@ public:
               operatorId,
               driverCtx,
               dpMergeJoinNode,
-              "MergeJoin",
+              "DPMergeJoin",
               dpMergeJoinNode->getSerializedSubstrait(),
               std::nullopt),
           dpMergeJoinNode_(std::move(dpMergeJoinNode)) {}
+
+    DPMergeJoin(
+        int32_t operatorId,
+        facebook::velox::exec::DriverCtx* driverCtx,
+        std::shared_ptr<const DPMergeJoinNode> dpMergeJoinNode,
+        std::string operatorType)
+        : DPBaseOperator(
+              operatorId,
+              driverCtx,
+              dpMergeJoinNode,
+              operatorType,
+              dpMergeJoinNode->getSerializedSubstrait(),
+              std::nullopt) {}
+
+    std::unique_ptr<DPBaseOperator> clone() const override {
+        return std::make_unique<DPMergeJoin>(
+            -1,
+            operatorCtx_->driverCtx(),
+            std::static_pointer_cast<const DPMergeJoinNode>(planNode_),
+            fusedOperatorType()
+        );
+    }
 
     void initialize() override {
         if (!initialized_) {

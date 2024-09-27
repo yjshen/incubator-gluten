@@ -1,0 +1,73 @@
+diff --git a/velox/exec/Driver.cpp b/velox/exec/Driver.cpp
+index bea69c0a3..69ee33f9f 100644
+--- a/velox/exec/Driver.cpp
++++ b/velox/exec/Driver.cpp
+@@ -637,6 +637,7 @@ StopReason Driver::runInternal(
+               nextOp,
+               curOperatorId_ + 1,
+               kOpMethodNeedsInput);
++          LOG(INFO) << "Next Operator needsInput " << i + 1 << " is " << needsInput;
+           if (needsInput) {
+             uint64_t resultBytes = 0;
+             RowVectorPtr intermediateResult;
+@@ -648,6 +649,7 @@ StopReason Driver::runInternal(
+                   });
+               TestValue::adjust(
+                   "facebook::velox::exec::Driver::runInternal::getOutput", op);
++              LOG(INFO) << "Call Operator's getOutput " << i;
+               CALL_OPERATOR(
+                   intermediateResult = op->getOutput(),
+                   op,
+@@ -688,6 +690,7 @@ StopReason Driver::runInternal(
+                   "facebook::velox::exec::Driver::runInternal::addInput",
+                   nextOp);
+ 
++              LOG(INFO) << "Call Next Operator addInput " << i + 1 << " of size " << intermediateResult->size();
+               CALL_OPERATOR(
+                   nextOp->addInput(intermediateResult),
+                   nextOp,
+@@ -729,6 +732,7 @@ StopReason Driver::runInternal(
+                   op,
+                   curOperatorId_,
+                   kOpMethodIsFinished);
++              LOG(INFO) << "Operator isFinished " << i << " is " << finished;
+               if (finished) {
+                 auto timer = createDeltaCpuWallTimer(
+                     [op, this](const CpuWallTiming& elapsedTime) {
+@@ -739,6 +743,7 @@ StopReason Driver::runInternal(
+                 TestValue::adjust(
+                     "facebook::velox::exec::Driver::runInternal::noMoreInput",
+                     nextOp);
++                LOG(INFO) << "Call Next Operator noMoreInput " << i + 1;
+                 CALL_OPERATOR(
+                     nextOp->noMoreInput(),
+                     nextOp,
+diff --git a/velox/exec/Task.cpp b/velox/exec/Task.cpp
+index 9ae366196..781ae1e2d 100644
+--- a/velox/exec/Task.cpp
++++ b/velox/exec/Task.cpp
+@@ -384,6 +384,11 @@ bool Task::allNodesReceivedNoMoreSplitsMessageLocked() const {
+   return true;
+ }
+ 
++int32_t Task::getNumThreads() const {
++  std::lock_guard<std::timed_mutex> l(mutex_);
++  return numThreads_;
++}
++
+ const std::string& Task::getOrCreateSpillDirectory() {
+   VELOX_CHECK(!spillDirectory_.empty(), "Spill directory not set");
+   if (spillDirectoryCreated_) {
+diff --git a/velox/exec/Task.h b/velox/exec/Task.h
+index 4e24c0814..aa3296020 100644
+--- a/velox/exec/Task.h
++++ b/velox/exec/Task.h
+@@ -615,6 +615,8 @@ class Task : public std::enable_shared_from_this<Task> {
+     toYield_ = numThreads_;
+   }
+ 
++  int32_t getNumThreads() const;
++
+   /// Requests yield if 'this' is running and has had at least one Driver on
+   /// thread since before 'startTimeMicros'. Returns the number of threads in
+   /// 'this' at the time of requesting yield. Returns 0 if yield not requested.
