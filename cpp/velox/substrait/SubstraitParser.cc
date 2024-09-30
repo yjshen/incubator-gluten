@@ -299,6 +299,24 @@ std::vector<TypePtr> SubstraitParser::sigToTypes(const std::string& signature) {
   return types;
 }
 
+std::optional<std::string> SubstraitParser::getQFlowIR(const ::substrait::extensions::AdvancedExtension& extension) {
+  if (extension.has_optimization()) {
+    google::protobuf::StringValue msg;
+    extension.optimization().UnpackTo(&msg);
+    std::size_t pos = msg.value().find("qflowIR=");
+    if (pos != std::string::npos) {
+      std::size_t start = pos + 8; // 8 is the length of "qflowIR="
+      std::size_t end = msg.value().find('\n', start);
+      if (end != std::string::npos) {
+        return msg.value().substr(start, end - start);
+      } else {
+        return msg.value().substr(start);
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 template <typename T>
 T SubstraitParser::getLiteralValue(const ::substrait::Expression::Literal& /* literal */) {
   VELOX_NYI();

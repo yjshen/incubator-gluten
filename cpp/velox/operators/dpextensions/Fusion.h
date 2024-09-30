@@ -55,17 +55,21 @@ class DPOperatorConsolidationAdapter {
 
     // Create a new name that reflects the merged operations
     std::string newName = "(";
+    std::vector<std::string> qflows;
     for (int32_t i = start; i < end - 1; ++i) {
       if (i != start) {
         newName += "->";
       }
       newName += operators[i]->operatorType();
+      const auto& operatorQflows = dynamic_cast<DPBaseOperator*>(operators[i])->qflows();
+      qflows.insert(qflows.end(), operatorQflows.begin(), operatorQflows.end());
     }
     newName += ")";
 
     // Create a clone of the last operator and set its name to annotate the consolidation.
     auto lastOperatorPtr = lastOperator->clone();
     lastOperatorPtr->setName(newName);
+    lastOperatorPtr->setQflows(qflows);
 
     // Replace the range of operators with just the last operator
     std::vector<std::unique_ptr<facebook::velox::exec::Operator>> replaceWith;

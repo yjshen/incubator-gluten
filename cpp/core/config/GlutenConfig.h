@@ -71,6 +71,16 @@ const std::string kIaaBackendName = "iaa";
 const std::string kSparkRedactionRegex = "spark.redaction.regex";
 const std::string kSparkRedactionString = "*********(redacted)";
 
+const std::string kDPEnabled = "spark.gluten.dp.enabled";
+const std::string kDPProjectEnabled = "spark.gluten.dp.project.enabled";
+const std::string kDPFilterEnabled = "spark.gluten.dp.filter.enabled";
+const std::string kDPAggregateEnabled = "spark.gluten.dp.aggregate.enabled";
+const std::string kDPOrderByEnabled = "spark.gluten.dp.orderby.enabled";
+const std::string kDPHashJoinEnabled = "spark.gluten.dp.hashjoin.enabled";
+const std::string kDPMergeJoinEnabled = "spark.gluten.dp.mergejoin.enabled";
+const std::string kDPBatchSize = "spark.gluten.dp.batchSize";
+const int32_t kDPBatchSizeDefault = 1024 * 1024;
+
 std::unordered_map<std::string, std::string>
 parseConfMap(JNIEnv* env, const uint8_t* planData, const int32_t planDataLength);
 

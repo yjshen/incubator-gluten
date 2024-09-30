@@ -8,6 +8,7 @@
 #pragma once
 
 #include "Nodes.h"
+#include "IO.h"
 #include "velox/exec/Operator.h"
 #include "cpp_rust_interop/bridge.h"
 #include <cstdint>
@@ -18,8 +19,8 @@ namespace gluten {
 class DPBaseOperator : public facebook::velox::exec::Operator {
 protected:
     bool initialized_ = false;
-    uint64_t dfg_instance_id_ = 0;
-    std::vector<uint8_t> serialized_substrait_;
+    SparkleHandle_t sparkle_handle_ = nullptr;
+    std::vector<std::string> qflows_;
     std::string name_;
     std::shared_ptr<const facebook::velox::core::PlanNode> planNode_;
 
@@ -28,9 +29,9 @@ public:
         int32_t operatorId,
         facebook::velox::exec::DriverCtx* driverCtx,
         const std::shared_ptr<const facebook::velox::core::PlanNode>& planNode,
-        const std::vector<uint8_t>& serialized_substrait)
+        const std::string& qflow)
         : Operator(driverCtx, planNode->outputType(), operatorId, planNode->id(), planNode->name().data()),
-          serialized_substrait_(serialized_substrait),
+          qflows_({qflow}),
           name_(planNode->name().data()),
           planNode_(planNode) {}
 
@@ -39,9 +40,9 @@ public:
         facebook::velox::exec::DriverCtx* driverCtx,
         const std::shared_ptr<const facebook::velox::core::PlanNode>& planNode,
         std::string operatorType,
-        const std::vector<uint8_t>& serialized_substrait)
+        const std::string& qflow)
         : Operator(driverCtx, planNode->outputType(), operatorId, planNode->id(), operatorType),
-          serialized_substrait_(serialized_substrait),
+          qflows_({qflow}),
           name_(operatorType),
           planNode_(planNode) {}
 
@@ -51,7 +52,7 @@ public:
         int32_t operatorId,
         facebook::velox::exec::DriverCtx* driverCtx,
         const std::shared_ptr<const facebook::velox::core::PlanNode>& planNode,
-        const std::vector<uint8_t>& serialized_substrait,
+        const std::string& qflow,
         std::optional<facebook::velox::common::SpillConfig> spillConfig)
         : Operator(
               driverCtx,
@@ -60,7 +61,7 @@ public:
               planNode->id(),
               planNode->name().data(),
               spillConfig),
-          serialized_substrait_(serialized_substrait),
+          qflows_({qflow}),
           name_(planNode->name().data()),
           planNode_(planNode) {}
 
@@ -70,7 +71,7 @@ public:
         facebook::velox::exec::DriverCtx* driverCtx,
         const std::shared_ptr<const facebook::velox::core::PlanNode>& planNode,
         std::string operatorType,
-        const std::vector<uint8_t>& serialized_substrait,
+        const std::string& qflow,
         std::optional<facebook::velox::common::SpillConfig> spillConfig)
         : Operator(
               driverCtx,
@@ -79,7 +80,7 @@ public:
               planNode->id(),
               operatorType,
               spillConfig),
-          serialized_substrait_(serialized_substrait),
+          qflows_({qflow}),
           name_(operatorType),
           planNode_(planNode) {}
 
@@ -89,7 +90,7 @@ public:
         bool noOutput,
         const std::shared_ptr<const facebook::velox::core::PlanNode>& planNode,
         std::string operatorType,
-        const std::vector<uint8_t>& serialized_substrait,
+        const std::string& qflow,
         std::optional<facebook::velox::common::SpillConfig> spillConfig)
         : Operator(
               driverCtx,
@@ -98,18 +99,22 @@ public:
               planNode->id(),
               operatorType,
               spillConfig),
-          serialized_substrait_(serialized_substrait),
+          qflows_({qflow}),
           name_(operatorType),
           planNode_(planNode) {}
 
     /**
-     * @brief Initializes the operator by compiling the Substrait plan to a DFG instance.
+     * @brief Initializes the operator by compile the QFlow IR and launch the sparkle backend.
      * This method should be called before any processing begins.
      */
     virtual void initialize() {
         if (!initialized_) {
-            // Call Rust code to compile substrait to DFG instance
-            dfg_instance_id_ = compileSubstraitToDFG(serialized_substrait_);
+            sparkle_handle_ = sparkle_init();
+            auto sparkle_status = sparkle_launch(sparkle_handle_, qflows_);
+            if (sparkle_status != SparkleSuccess) {
+                VELOX_FAIL(
+                    "Failed to compile QFlow IR and launch sparkle backend. Status {} ", static_cast<int>(sparkle_status)); 
+            }
             initialized_ = true;
         }
     }
@@ -120,7 +125,7 @@ public:
      */
     void close() override {
         Operator::close();
-        dfgClose(dfg_instance_id_);
+        sparkle_clean(sparkle_handle_);
     }
 
     std::string toString() const override {
@@ -136,6 +141,14 @@ public:
      */
     void setName(std::string& newName) {
         name_ = newName;
+    }
+
+    std::vector<std::string> qflows() const {
+        return qflows_;
+    }
+
+    void setQflows(const std::vector<std::string>& qflows) {
+        qflows_ = qflows;
     }
 
     virtual std::unique_ptr<DPBaseOperator> clone() const = 0;
@@ -168,7 +181,7 @@ public:
               operatorId,
               driverCtx,
               dpProjectNode,
-              dpProjectNode->getSerializedSubstrait()) {}
+              dpProjectNode->getQflow()) {}
 
     DPProject(
         int32_t operatorId,
@@ -180,7 +193,7 @@ public:
               driverCtx,
               dpProjectNode,
               operatorType,
-              dpProjectNode->getSerializedSubstrait()) {}
+              dpProjectNode->getQflow()) {}
 
     std::unique_ptr<DPBaseOperator> clone() const override {
         return std::make_unique<DPProject>(
@@ -219,9 +232,10 @@ public:
     }
 
     facebook::velox::RowVectorPtr evaluate(const facebook::velox::RowVectorPtr& input) {
-        auto inputPtr = toRawPointer(input);
-        const uint8_t* outputPtr = evaluateDFG(dfg_instance_id_, inputPtr);
-        return fromRawPointer(outputPtr);
+        // auto inputPtr = toRawPointer(input);
+        // const uint8_t* outputPtr = evaluateDFG(dfg_instance_id_, inputPtr);
+        // return fromRawPointer(outputPtr);
+        return nullptr;
     }
 };
 
@@ -235,7 +249,7 @@ public:
               operatorId,
               driverCtx,
               dpFilterNode,
-              dpFilterNode->getSerializedSubstrait()) {}
+              dpFilterNode->getQflow()) {}
 
     DPFilter(
         int32_t operatorId,
@@ -247,7 +261,7 @@ public:
               driverCtx,
               dpFilterNode,
               operatorType,
-              dpFilterNode->getSerializedSubstrait()) {}
+              dpFilterNode->getQflow()) {}
 
     std::unique_ptr<DPBaseOperator> clone() const override {
         return std::make_unique<DPFilter>(
@@ -289,12 +303,7 @@ public:
         // auto inputPtr = toRawPointer(input);
         // const uint8_t* outputPtr = evaluateDFG(dfg_instance_id_, inputPtr);
         // return fromRawPointer(outputPtr);
-
-        // Dummy implementation of filter to just return the first row
-        if (input->size() == 0) {
-            return nullptr;
-        }
-        return std::static_pointer_cast<facebook::velox::RowVector>(input->slice(0, 1));
+        return nullptr;
     }
 };
 
@@ -308,7 +317,7 @@ public:
               operatorId,
               driverCtx,
               dpOrderByNode,
-              dpOrderByNode->getSerializedSubstrait(),
+              dpOrderByNode->getQflow(),
               dpOrderByNode->canSpill(driverCtx->queryConfig())
                ? driverCtx->makeSpillConfig(operatorId)
                : std::nullopt) {}
@@ -323,7 +332,7 @@ public:
               driverCtx,
               dpOrderByNode,
               operatorType,
-              dpOrderByNode->getSerializedSubstrait(),
+              dpOrderByNode->getQflow(),
               dpOrderByNode->canSpill(driverCtx->queryConfig())
                ? driverCtx->makeSpillConfig(operatorId)
                : std::nullopt) {}
@@ -343,13 +352,13 @@ public:
 
     void addInput(facebook::velox::RowVectorPtr input) override {
         initialize();
-        auto inputPtr = toRawPointer(input);
-        evaluateDFGBuild(dfg_instance_id_, inputPtr);
+        // auto inputPtr = toRawPointer(input);
+        // evaluateDFGBuild(dfg_instance_id_, inputPtr);
     }
 
     void noMoreInput() override {
         Operator::noMoreInput();
-        dfgNoMoreInput(dfg_instance_id_);
+        // dfgNoMoreInput(dfg_instance_id_);
     }
 
     facebook::velox::RowVectorPtr getOutput() override {
@@ -358,13 +367,14 @@ public:
         }
 
         initialize();
-        if (dfgResultHasNext(dfg_instance_id_)) {
-            const uint8_t* outputPtr = dfgResultNext(dfg_instance_id_);
-            return fromRawPointer(outputPtr);
-        } else {
-            finished_ = true;
-            return nullptr;
-        }
+        // if (dfgResultHasNext(dfg_instance_id_)) {
+        //     const uint8_t* outputPtr = dfgResultNext(dfg_instance_id_);
+        //     return fromRawPointer(outputPtr);
+        // } else {
+        //     finished_ = true;
+        //     return nullptr;
+        // }
+        return nullptr;
     }
 
     facebook::velox::exec::BlockingReason isBlocked(facebook::velox::ContinueFuture* future) override {
@@ -377,7 +387,7 @@ public:
 
     void reclaim(uint64_t targetBytes, facebook::velox::memory::MemoryReclaimer::Stats& stats)
         override {
-            auto freed = dfgSpill(dfg_instance_id_);
+            // auto freed = dfgSpill(dfg_instance_id_);
             // TODO: update stats
             return;
         }
@@ -397,7 +407,7 @@ public:
               driverCtx,
               dpAggregateNode,
               dpAggregateNode->isPartial() ? "DPPartialHashAggregate" : "DPHashAggregate",
-              dpAggregateNode->getSerializedSubstrait(),
+              dpAggregateNode->getQflow(),
               dpAggregateNode->canSpill(driverCtx->queryConfig())
                ? driverCtx->makeSpillConfig(operatorId)
                : std::nullopt),
@@ -413,7 +423,7 @@ public:
               driverCtx,
               dpAggregateNode,
               operatorType,
-              dpAggregateNode->getSerializedSubstrait(),
+              dpAggregateNode->getQflow(),
               dpAggregateNode->canSpill(driverCtx->queryConfig())
                ? driverCtx->makeSpillConfig(operatorId)
                : std::nullopt),
@@ -434,17 +444,17 @@ public:
 
     void addInput(facebook::velox::RowVectorPtr input) override {
         initialize();
-        auto inputPtr = toRawPointer(input);
-        if (isPartialOutput) {
-            evaluateDFGPartialBuild(dfg_instance_id_, inputPtr);
-        } else {
-            evaluateDFGBuild(dfg_instance_id_, inputPtr);
-        }
+        // auto inputPtr = toRawPointer(input);
+        // if (isPartialOutput) {
+        //     evaluateDFGPartialBuild(dfg_instance_id_, inputPtr);
+        // } else {
+        //     evaluateDFGBuild(dfg_instance_id_, inputPtr);
+        // }
     }
 
     void noMoreInput() override {
         Operator::noMoreInput();
-        dfgNoMoreInput(dfg_instance_id_);
+        // dfgNoMoreInput(dfg_instance_id_);
     }
 
     facebook::velox::RowVectorPtr getOutput() override {
@@ -453,13 +463,14 @@ public:
         }
 
         initialize();
-        if (dfgResultHasNext(dfg_instance_id_)) {
-            const uint8_t* outputPtr = dfgResultNext(dfg_instance_id_);
-            return fromRawPointer(outputPtr);   
-        } else {
-            finished_ = true;
-            return nullptr;
-        }
+        // if (dfgResultHasNext(dfg_instance_id_)) {
+        //     const uint8_t* outputPtr = dfgResultNext(dfg_instance_id_);
+        //     return fromRawPointer(outputPtr);   
+        // } else {
+        //     finished_ = true;
+        //     return nullptr;
+        // }
+        return nullptr;
     }
 
     facebook::velox::exec::BlockingReason isBlocked(facebook::velox::ContinueFuture* future) override {
@@ -472,7 +483,7 @@ public:
 
     void reclaim(uint64_t targetBytes, facebook::velox::memory::MemoryReclaimer::Stats& stats)
         override {
-            auto freed = dfgSpill(dfg_instance_id_);
+            // auto freed = dfgSpill(dfg_instance_id_);
             // TODO: update stats
             return;
         }
@@ -494,7 +505,7 @@ public:
               driverCtx,
               dpAggregateNode,
               dpAggregateNode->isPartial() ? "DPPartialStreamingAggregate" : "DPStreamingAggregate",
-              dpAggregateNode->getSerializedSubstrait(),
+              dpAggregateNode->getQflow(),
               std::nullopt),
                isPartialOutput(dpAggregateNode->isPartial()) {}
 
@@ -508,7 +519,7 @@ public:
               driverCtx,
               dpAggregateNode,
               operatorType,
-              dpAggregateNode->getSerializedSubstrait(),
+              dpAggregateNode->getQflow(),
               std::nullopt),
               isPartialOutput(dpAggregateNode->isPartial()) {}
 
@@ -527,12 +538,12 @@ public:
 
     void addInput(facebook::velox::RowVectorPtr input) override {
         initialize();
-        auto inputPtr = toRawPointer(input);
-        if (isPartialOutput) {
-            evaluateDFGPartialBuild(dfg_instance_id_, inputPtr);
-        } else {
-            evaluateDFGBuild(dfg_instance_id_, inputPtr);
-        }
+        // auto inputPtr = toRawPointer(input);
+        // if (isPartialOutput) {
+        //     evaluateDFGPartialBuild(dfg_instance_id_, inputPtr);
+        // } else {
+        //     evaluateDFGBuild(dfg_instance_id_, inputPtr);
+        // }
     }
 
     bool isFinished() override {
@@ -545,7 +556,7 @@ public:
 
     void noMoreInput() override {
         Operator::noMoreInput();
-        dfgNoMoreInput(dfg_instance_id_);
+        // dfgNoMoreInput(dfg_instance_id_);
     }
 
     facebook::velox::RowVectorPtr getOutput() override {
@@ -554,13 +565,14 @@ public:
         }
 
         initialize();
-        if (dfgResultHasNext(dfg_instance_id_)) {
-            const uint8_t* outputPtr = dfgResultNext(dfg_instance_id_);
-            return fromRawPointer(outputPtr);   
-        } else {
-            finished_ = true;
-            return nullptr;
-        }
+        // if (dfgResultHasNext(dfg_instance_id_)) {
+        //     const uint8_t* outputPtr = dfgResultNext(dfg_instance_id_);
+        //     return fromRawPointer(outputPtr);   
+        // } else {
+        //     finished_ = true;
+        //     return nullptr;
+        // }
+        return nullptr;
     }
     
 
@@ -581,7 +593,7 @@ public:
               true,
               dpHashJoinNode,
               "DPHashJoinBuild",
-              dpHashJoinNode->getSerializedSubstrait(),
+              dpHashJoinNode->getQflow(),
               // TODO: avoid spill for build side for now for simplicity
               // TODO: add spill config later
               std::nullopt) {}
@@ -596,7 +608,7 @@ public:
               driverCtx,
               dpHashJoinNode,
               operatorType,
-              dpHashJoinNode->getSerializedSubstrait(),
+              dpHashJoinNode->getQflow(),
               // TODO: avoid spill for build side for now for simplicity
               // TODO: add spill config later
               std::nullopt) {}
@@ -616,13 +628,13 @@ public:
 
     void addInput(facebook::velox::RowVectorPtr input) override {
         initialize();
-        auto inputPtr = toRawPointer(input);
-        evaluateDFGBuild(dfg_instance_id_, inputPtr);
+        // auto inputPtr = toRawPointer(input);
+        // evaluateDFGBuild(dfg_instance_id_, inputPtr);
     }
 
     void noMoreInput() override {
         Operator::noMoreInput();
-        dfgNoMoreInput(dfg_instance_id_);
+        // dfgNoMoreInput(dfg_instance_id_);
         buildFinished_ = true;
     }
 
@@ -653,7 +665,7 @@ public:
               driverCtx,
               dpHashJoinNode,
               "DPHashJoinProbe",
-              dpHashJoinNode->getSerializedSubstrait(),
+              dpHashJoinNode->getQflow(),
               dpHashJoinNode->canSpill(driverCtx->queryConfig())
                ? driverCtx->makeSpillConfig(operatorId)
                : std::nullopt) {}
@@ -668,7 +680,7 @@ public:
               driverCtx,
               dpHashJoinNode,
               operatorType,
-              dpHashJoinNode->getSerializedSubstrait(),
+              dpHashJoinNode->getQflow(),
               dpHashJoinNode->canSpill(driverCtx->queryConfig())
                ? driverCtx->makeSpillConfig(operatorId)
                : std::nullopt) {}
@@ -710,9 +722,10 @@ public:
     }
 
     facebook::velox::RowVectorPtr evaluate(const facebook::velox::RowVectorPtr& input) {
-        auto inputPtr = toRawPointer(input);
-        const uint8_t* outputPtr = evaluateDFG(dfg_instance_id_, inputPtr);
-        return fromRawPointer(outputPtr);
+        // auto inputPtr = toRawPointer(input);
+        // const uint8_t* outputPtr = evaluateDFG(dfg_instance_id_, inputPtr);
+        // return fromRawPointer(outputPtr);
+        return nullptr;
     }
 
 private:
@@ -730,7 +743,7 @@ public:
               driverCtx,
               dpMergeJoinNode,
               "DPMergeSource",
-              dpMergeJoinNode->getSerializedSubstrait(),
+              dpMergeJoinNode->getQflow(),
               std::nullopt) {}
 
     DPMergeSource(
@@ -743,7 +756,7 @@ public:
               driverCtx,
               dpMergeJoinNode,
               operatorType,
-              dpMergeJoinNode->getSerializedSubstrait(),
+              dpMergeJoinNode->getQflow(),
               std::nullopt) {}
 
     std::unique_ptr<DPBaseOperator> clone() const override {
@@ -758,7 +771,7 @@ public:
     void initialize() override {
         if (!initialized_) {
             initialized_ = true;
-            dfg_instance_id_ = compileDFGMergeSource(serialized_substrait_);
+            // dfg_instance_id_ = compileDFGMergeSource(qflow_);
         }
     }
 
@@ -831,11 +844,11 @@ public:
             return facebook::velox::exec::BlockingReason::kNotBlocked;
         }
 
-        const uint8_t* outputPtr = dfgMergeSourceNext(dfg_instance_id_);
-        if (outputPtr != nullptr) {
-            *data = fromRawPointer(outputPtr);
-            return facebook::velox::exec::BlockingReason::kNotBlocked;
-        }
+        // const uint8_t* outputPtr = dfgMergeSourceNext(dfg_instance_id_);
+        // if (outputPtr != nullptr) {
+        //     *data = fromRawPointer(outputPtr);
+        //     return facebook::velox::exec::BlockingReason::kNotBlocked;
+        // }
 
         consumerPromise_ = facebook::velox::ContinuePromise("DPMergeSource::next");
         *future = consumerPromise_->getSemiFuture();
@@ -865,26 +878,26 @@ public:
 
         if (data == nullptr) {
             state->atEnd = true;
-            dfgMergeSourceNoMoreInput(dfg_instance_id_);
+            // dfgMergeSourceNoMoreInput(dfg_instance_id_);
             notify(consumerPromise_);
             return facebook::velox::exec::BlockingReason::kNotBlocked;
         }
 
-        auto inputPtr = toRawPointer(data);
-        dfgMergeSourceEnqueue(dfg_instance_id_, inputPtr);
+        // auto inputPtr = toRawPointer(data);
+        // dfgMergeSourceEnqueue(dfg_instance_id_, inputPtr);
 
-        if (dfgMergeSourceIsFull(dfg_instance_id_)) {
-            producerPromise_ = facebook::velox::ContinuePromise("DPMergeSource::enqueue");
-            *future = producerPromise_->getSemiFuture();
-            return facebook::velox::exec::BlockingReason::kWaitForConsumer;
-        }
+        // if (dfgMergeSourceIsFull(dfg_instance_id_)) {
+        //     producerPromise_ = facebook::velox::ContinuePromise("DPMergeSource::enqueue");
+        //     *future = producerPromise_->getSemiFuture();
+        //     return facebook::velox::exec::BlockingReason::kWaitForConsumer;
+        // }
 
         notify(consumerPromise_);
         return facebook::velox::exec::BlockingReason::kNotBlocked;
     }
 
     void close() override {
-        dfgMergeSourceClose(dfg_instance_id_);
+        // dfgMergeSourceClose(dfg_instance_id_);
         state_.wlock()->data = nullptr;
         state_.wlock()->atEnd = true;
         notify(producerPromise_);
@@ -936,7 +949,7 @@ public:
               driverCtx,
               dpMergeJoinNode,
               "DPMergeJoin",
-              dpMergeJoinNode->getSerializedSubstrait(),
+              dpMergeJoinNode->getQflow(),
               std::nullopt),
           dpMergeJoinNode_(std::move(dpMergeJoinNode)) {}
 
@@ -950,7 +963,7 @@ public:
               driverCtx,
               dpMergeJoinNode,
               operatorType,
-              dpMergeJoinNode->getSerializedSubstrait(),
+              dpMergeJoinNode->getQflow(),
               std::nullopt) {}
 
     std::unique_ptr<DPBaseOperator> clone() const override {
@@ -965,46 +978,49 @@ public:
     void initialize() override {
         if (!initialized_) {
             initialized_ = true;
-            dfg_instance_id_ = compileDFGMergeJoin(serialized_substrait_);
+            // dfg_instance_id_ = compileDFGMergeJoin(qflow_);
         }
     }
 
     bool needsInput() const override {
-        return dfgMergeJoinNeedsInput(dfg_instance_id_);
+        // return dfgMergeJoinNeedsInput(dfg_instance_id_);
+        return true;
     }
 
     void addInput(facebook::velox::RowVectorPtr input) override {
-        auto inputPtr = toRawPointer(input);
-        dfgMergeJoinAddInput(dfg_instance_id_, inputPtr);
+        // auto inputPtr = toRawPointer(input);
+        // dfgMergeJoinAddInput(dfg_instance_id_, inputPtr);
     }
 
     facebook::velox::exec::BlockingReason isBlocked(facebook::velox::ContinueFuture* future) override {
-        if (dfgMergeJoinIsBlocked(dfg_instance_id_)) {
-            *future = std::move(futureRightSideInput_);
-            return facebook::velox::exec::BlockingReason::kWaitForMergeJoinRightSide;
-        }
+        // if (dfgMergeJoinIsBlocked(dfg_instance_id_)) {
+        //     *future = std::move(futureRightSideInput_);
+        //     return facebook::velox::exec::BlockingReason::kWaitForMergeJoinRightSide;
+        // }
         return facebook::velox::exec::BlockingReason::kNotBlocked;
     }
 
     facebook::velox::RowVectorPtr getOutput() override {
-        const uint8_t* outputPtr = dfgMergeJoinGetOutput(dfg_instance_id_);
-        if (outputPtr == nullptr) {
-            return nullptr;
-        }
-        return fromRawPointer(outputPtr);
+        // const uint8_t* outputPtr = dfgMergeJoinGetOutput(dfg_instance_id_);
+        // if (outputPtr == nullptr) {
+        //     return nullptr;
+        // }
+        // return fromRawPointer(outputPtr);
+        return nullptr;
     }
 
     bool isFinished() override {
-        return dfgMergeJoinIsFinished(dfg_instance_id_);
+        // return dfgMergeJoinIsFinished(dfg_instance_id_);
+        return true;
     }
 
     void noMoreInput() override {
         Operator::noMoreInput();
-        dfgMergeJoinNoMoreInput(dfg_instance_id_);
+        // dfgMergeJoinNoMoreInput(dfg_instance_id_);
     }
 
     void close() override {
-        dfgMergeJoinClose(dfg_instance_id_);
+        // dfgMergeJoinClose(dfg_instance_id_);
         DPBaseOperator::close();
     }
 
