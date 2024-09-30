@@ -17,16 +17,16 @@ template<typename BaseNode>
 class DPNodeMixin : public facebook::velox::core::PlanNode {
 protected:
     std::shared_ptr<const BaseNode> original_node_;
-    std::vector<uint8_t> serialized_substrait_;
+    std::string qflow_;
 
 public:
     DPNodeMixin(
         const facebook::velox::core::PlanNodeId& id,
         std::shared_ptr<const BaseNode> original_node,
-        std::vector<uint8_t> serialized_substrait)
+        std::string qflow)
         : facebook::velox::core::PlanNode(id),
           original_node_(std::move(original_node)),
-          serialized_substrait_(std::move(serialized_substrait)) {}
+          qflow_(std::move(qflow)) {}
 
     const facebook::velox::RowTypePtr& outputType() const override {
         return original_node_->outputType();
@@ -41,8 +41,8 @@ public:
         return original_node_->serialize();
     }
 
-    const std::vector<uint8_t>& getSerializedSubstrait() const {
-        return serialized_substrait_;
+    const std::string& getQflow() const {
+        return qflow_;
     }
 
     virtual void addDPDetails(std::stringstream& stream) const {
@@ -69,8 +69,8 @@ public:
         const facebook::velox::core::PlanNodeId& id,
         std::shared_ptr<const facebook::velox::core::ProjectNode> original_node,
         PlanNodePtr source,
-        std::vector<uint8_t> serialized_substrait)
-        : DPNodeMixin(id, std::move(original_node), std::move(serialized_substrait)),
+        std::string qflow)
+        : DPNodeMixin(id, std::move(original_node), std::move(qflow)),
             sources_{std::move(source)} {}
 
     const std::vector<facebook::velox::core::PlanNodePtr>& sources() const override {
@@ -87,8 +87,8 @@ private:
          const facebook::velox::core::PlanNodeId& id,
          std::shared_ptr<const facebook::velox::core::FilterNode> original_node,
          PlanNodePtr source,
-         std::vector<uint8_t> serialized_substrait)
-         : DPNodeMixin(id, std::move(original_node), std::move(serialized_substrait)),
+         std::string qflow)
+         : DPNodeMixin(id, std::move(original_node), std::move(qflow)),
             sources_{std::move(source)} {}
 
      const std::vector<facebook::velox::core::PlanNodePtr>& sources() const override {
@@ -105,8 +105,8 @@ public:
         const facebook::velox::core::PlanNodeId& id,
         std::shared_ptr<const facebook::velox::core::AggregationNode> original_node,
         PlanNodePtr source,
-        std::vector<uint8_t> serialized_substrait)
-        : DPNodeMixin(id, std::move(original_node), std::move(serialized_substrait)),
+        std::string qflow)
+        : DPNodeMixin(id, std::move(original_node), std::move(qflow)),
             sources_{std::move(source)} {}
 
     const std::vector<facebook::velox::core::PlanNodePtr>& sources() const override {
@@ -142,8 +142,8 @@ public:
         const facebook::velox::core::PlanNodeId& id,
         std::shared_ptr<const facebook::velox::core::OrderByNode> original_node,
         PlanNodePtr source,
-        std::vector<uint8_t> serialized_substrait)
-        : DPNodeMixin(id, std::move(original_node), std::move(serialized_substrait)),
+        std::string qflow)
+        : DPNodeMixin(id, std::move(original_node), std::move(qflow)),
             sources_{std::move(source)} {}
 
     const std::vector<facebook::velox::core::PlanNodePtr>& sources() const override {
@@ -168,8 +168,8 @@ public:
         std::shared_ptr<const facebook::velox::core::HashJoinNode> original_node,
         PlanNodePtr left,
         PlanNodePtr right,
-        std::vector<uint8_t> serialized_substrait)
-        : DPNodeMixin(id, std::move(original_node), std::move(serialized_substrait)),
+        std::string qflow)
+        : DPNodeMixin(id, std::move(original_node), std::move(qflow)),
             sources_{std::move(left), std::move(right)} {}
 
     const std::vector<facebook::velox::core::PlanNodePtr>& sources() const override {
@@ -194,8 +194,8 @@ public:
         std::shared_ptr<const facebook::velox::core::MergeJoinNode> original_node,
         PlanNodePtr left,
         PlanNodePtr right,
-        std::vector<uint8_t> serialized_substrait)
-        : DPNodeMixin(id, std::move(original_node), std::move(serialized_substrait)),
+        std::string qflow)
+        : DPNodeMixin(id, std::move(original_node), std::move(qflow)),
             sources_{std::move(left), std::move(right)} {}
 
     const std::vector<facebook::velox::core::PlanNodePtr>& sources() const override {

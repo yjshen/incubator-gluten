@@ -635,6 +635,17 @@ object GlutenConfig {
 
   val GLUTEN_COST_EVALUATOR_ENABLED = "spark.gluten.sql.adaptive.costEvaluator.enabled"
 
+  // DP configs
+  val DP_PREFIX = "spark.gluten.dp."
+  val GLUTEN_DP_ENABLED = "spark.gluten.dp.enabled"
+  val GLUTEN_DP_PROJECT_ENABLED = "spark.gluten.dp.project.enabled"
+  val GLUTEN_DP_FILTER_ENABLED = "spark.gluten.dp.filter.enabled"
+  val GLUTEN_DP_AGGREGATE_ENABLED = "spark.gluten.dp.aggregate.enabled"
+  val GLUTEN_DP_ORDER_BY_ENABLED = "spark.gluten.dp.orderby.enabled"
+  val GLUTEN_DP_HASH_JOIN_ENABLED = "spark.gluten.dp.hashjoin.enabled"
+  val GLUTEN_DP_MERGE_JOIN_ENABLED = "spark.gluten.dp.mergejoin.enabled"
+  val GLUTEN_DP_BATCH_SIZE = "spark.gluten.dp.batchSize"
+
   var ins: GlutenConfig = _
 
   def getConf: GlutenConfig = {
@@ -789,6 +800,11 @@ object GlutenConfig {
 
     conf
       .filter(_._1.startsWith(SPARK_ABFS_ACCOUNT_KEY))
+      .foreach(entry => nativeConfMap.put(entry._1, entry._2))
+
+    // put in all DP configs
+    conf
+      .filter(_._1.startsWith(DP_PREFIX))
       .foreach(entry => nativeConfMap.put(entry._1, entry._2))
 
     // return
@@ -2109,4 +2125,68 @@ object GlutenConfig {
         "Otherwise, throw an exception.")
       .booleanConf
       .createWithDefault(true)
+
+  val DP_ENABLED =
+    buildConf(GlutenConfig.GLUTEN_DP_ENABLED)
+      .internal()
+      .doc("Enable DataPelago Plugin over Velox backend. " +
+        "If disabled, vanilla Velox backend will be used.")
+      .booleanConf
+      .createWithDefault(true)
+
+  val DP_PROJECT_ENABLED =
+    buildConf(GlutenConfig.GLUTEN_DP_PROJECT_ENABLED)
+      .internal()
+      .doc("Use DataPelago Project operator over Velox Project operator. " +
+        "If disabled, vanilla Velox Project operator will be used.")
+      .booleanConf
+      .createWithDefault(false)
+
+  val DP_FILTER_ENABLED =
+    buildConf(GlutenConfig.GLUTEN_DP_FILTER_ENABLED)
+      .internal()
+      .doc("Use DataPelago Filter operator over Velox Filter operator. " +
+        "If disabled, vanilla Velox Filter operator will be used.")
+      .booleanConf
+      .createWithDefault(false)
+
+  val DP_AGGREGATE_ENABLED =
+    buildConf(GlutenConfig.GLUTEN_DP_AGGREGATE_ENABLED)
+      .internal()
+      .doc("Use DataPelago Aggregate operator over Velox Aggregate operator. " +
+        "If disabled, vanilla Velox Aggregate operator will be used.")
+      .booleanConf
+      .createWithDefault(false)
+
+  val DP_ORDER_BY_ENABLED =
+    buildConf(GlutenConfig.GLUTEN_DP_ORDER_BY_ENABLED)
+      .internal()
+      .doc("Use DataPelago OrderBy operator over Velox OrderBy operator. " +
+        "If disabled, vanilla Velox OrderBy operator will be used.")
+      .booleanConf
+      .createWithDefault(false)
+
+  val DP_HASH_JOIN_ENABLED =
+    buildConf(GlutenConfig.GLUTEN_DP_HASH_JOIN_ENABLED)
+      .internal()
+      .doc("Use DataPelago HashJoin operator over Velox HashJoin operator. " +
+        "If disabled, vanilla Velox HashJoin operator will be used.")
+      .booleanConf
+      .createWithDefault(false)
+
+  val DP_MERGE_JOIN_ENABLED =
+    buildConf(GlutenConfig.GLUTEN_DP_MERGE_JOIN_ENABLED)
+      .internal()
+      .doc("Use DataPelago MergeJoin operator over Velox MergeJoin operator. " +
+        "If disabled, vanilla Velox MergeJoin operator will be used.")
+      .booleanConf
+      .createWithDefault(false)
+
+  val DP_BATCH_SIZE =
+    buildConf(GlutenConfig.GLUTEN_DP_BATCH_SIZE)
+      .internal()
+      .doc("Set the default number of rows for a batch for DataPelago operators. " +
+        "Extra batch resizing occurs when the DP batchSize differs from the Velox batchSize.")
+      .intConf
+      .createWithDefault(1024 * 1024)
 }

@@ -23,7 +23,7 @@
 #include "velox/exec/TableWriter.h"
 #include "velox/type/Filter.h"
 #include "velox/type/Type.h"
-#include <iostream>
+#include "velox/compute/VeloxBackend.h"
 
 #include <cstdint>
 #include "rust/cxx.h"
@@ -270,7 +270,7 @@ std::string SubstraitToVeloxPlanConverter::toAggregationFunctionName(
   return baseName + suffix;
 }
 
-core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::JoinRel& sJoin, const ::substrait::Rel& rel) {
+core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::JoinRel& sJoin) {
   if (!sJoin.has_left()) {
     VELOX_FAIL("Left Rel is expected in JoinRel.");
   }
@@ -374,7 +374,7 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::
         rightNode,
         getJoinOutputType(leftNode, rightNode, joinType));
 
-    auto dpHashJoinNodeOpt = tryCreateDPHashJoinNode(nextPlanNodeId(), hashJoinNode, leftNode, rightNode, rel);
+    auto dpHashJoinNodeOpt = tryCreateDPHashJoinNode(nextPlanNodeId(), hashJoinNode, leftNode, rightNode, sJoin);
     return dpHashJoinNodeOpt.value_or(std::move(hashJoinNode));
   }
 }
@@ -419,7 +419,7 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::
       getJoinOutputType(leftNode, rightNode, joinType));
 }
 
-core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::AggregateRel& aggRel, const ::substrait::Rel& rel) {
+core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::AggregateRel& aggRel) {
   auto childNode = convertSingleInput<::substrait::AggregateRel>(aggRel);
   core::AggregationNode::Step aggStep = toAggregationStep(aggRel);
   const auto& inputType = childNode->outputType();
@@ -489,7 +489,7 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::
       ignoreNullKeys,
       childNode);
 
-  auto dpAggregationNodeOpt = tryCreateDPAggregateNode(nextPlanNodeId(), aggregationNode, childNode, rel);
+  auto dpAggregationNodeOpt = tryCreateDPAggregateNode(nextPlanNodeId(), aggregationNode, childNode, aggRel);
   auto resultNode = dpAggregationNodeOpt.value_or(std::move(aggregationNode));
 
   if (aggRel.has_common()) {
@@ -499,7 +499,7 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::
   }
 }
 
-core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::ProjectRel& projectRel, const ::substrait::Rel& rel) {
+core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::ProjectRel& projectRel) {
   auto childNode = convertSingleInput<::substrait::ProjectRel>(projectRel);
   // Construct Velox Expressions.
   const auto& projectExprs = projectRel.expressions();
@@ -549,7 +549,7 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::
         nextPlanNodeId(), std::move(projectNames), std::move(expressions), childNode);
   }
 
-  auto dpProjectNodeOpt = tryCreateDPProjectNode(nextPlanNodeId(), projectNode, childNode, rel);
+  auto dpProjectNodeOpt = tryCreateDPProjectNode(nextPlanNodeId(), projectNode, childNode, projectRel);
   return dpProjectNodeOpt.value_or(std::move(projectNode));
 }
 
@@ -1071,13 +1071,13 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(
       childNode);
 }
 
-core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::SortRel& sortRel, const ::substrait::Rel& rel) {
+core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::SortRel& sortRel) {
   auto childNode = convertSingleInput<::substrait::SortRel>(sortRel);
   auto [sortingKeys, sortingOrders] = processSortField(sortRel.sorts(), childNode->outputType());
   auto orderByNode = std::make_shared<core::OrderByNode>(
       nextPlanNodeId(), sortingKeys, sortingOrders, false /*isPartial*/, childNode);
 
-  auto dpOrderByNodeOpt = tryCreateDPOrderByNode(nextPlanNodeId(), orderByNode, childNode, rel);
+  auto dpOrderByNodeOpt = tryCreateDPOrderByNode(nextPlanNodeId(), orderByNode, childNode, sortRel);
   return dpOrderByNodeOpt.value_or(std::move(orderByNode));
 }
 
@@ -1101,12 +1101,12 @@ SubstraitToVeloxPlanConverter::processSortField(
   return {sortingKeys, sortingOrders};
 }
 
-core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::FilterRel& filterRel, const ::substrait::Rel& rel) {
+core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::FilterRel& filterRel) {
   auto childNode = convertSingleInput<::substrait::FilterRel>(filterRel);
   auto filterNode = std::make_shared<core::FilterNode>(
       nextPlanNodeId(), exprConverter_->toVeloxExpr(filterRel.condition(), childNode->outputType()), childNode);
 
-  auto dpFilterNodeOpt = tryCreateDPFilterNode(nextPlanNodeId(), filterNode, childNode, rel);
+  auto dpFilterNodeOpt = tryCreateDPFilterNode(nextPlanNodeId(), filterNode, childNode, filterRel);
   auto resultNode = dpFilterNodeOpt.value_or(std::move(filterNode));
 
   if (filterRel.has_common()) {
@@ -1332,21 +1332,20 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(
 }
 
 core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::Rel& rel) {
-  std::cerr << "toVeloxPlan for " << rel.DebugString() << std::endl;
   if (rel.has_aggregate()) {
-    return toVeloxPlan(rel.aggregate(), rel);
+    return toVeloxPlan(rel.aggregate());
   } else if (rel.has_project()) {
-    return toVeloxPlan(rel.project(), rel);
+    return toVeloxPlan(rel.project());
   } else if (rel.has_filter()) {
-    return toVeloxPlan(rel.filter(), rel);
+    return toVeloxPlan(rel.filter());
   } else if (rel.has_join()) {
-    return toVeloxPlan(rel.join(), rel);
+    return toVeloxPlan(rel.join());
   } else if (rel.has_cross()) {
     return toVeloxPlan(rel.cross());
   } else if (rel.has_read()) {
     return toVeloxPlan(rel.read());
   } else if (rel.has_sort()) {
-    return toVeloxPlan(rel.sort(), rel);
+    return toVeloxPlan(rel.sort());
   } else if (rel.has_expand()) {
     return toVeloxPlan(rel.expand());
   } else if (rel.has_generate()) {
@@ -1379,13 +1378,16 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::
 
 core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(const ::substrait::Plan& substraitPlan) {
   VELOX_CHECK(checkTypeExtension(substraitPlan), "The type extension only have unknown type.")
+  auto maybeChangedPlan = dpSubstraitInterception(substraitPlan);
+  const ::substrait::Plan& finalPlan = maybeChangedPlan ? *maybeChangedPlan : substraitPlan;
+
   // Construct the function map based on the Substrait representation,
   // and initialize the expression converter with it.
-  constructFunctionMap(substraitPlan);
+  constructFunctionMap(finalPlan);
 
   // In fact, only one RelRoot or Rel is expected here.
-  VELOX_CHECK_EQ(substraitPlan.relations_size(), 1);
-  const auto& rel = substraitPlan.relations(0);
+  VELOX_CHECK_EQ(finalPlan.relations_size(), 1);
+  const auto& rel = finalPlan.relations(0);
   if (rel.has_root()) {
     return toVeloxPlan(rel.root());
   } else if (rel.has_rel()) {
@@ -2587,6 +2589,31 @@ void SubstraitToVeloxPlanConverter::setFilterInfo(
   } else {
     columnToFilterInfo[colIdx].setNotValues(variants);
   }
+}
+
+std::optional<::substrait::Plan> SubstraitToVeloxPlanConverter::dpSubstraitInterception(const ::substrait::Plan& substraitPlan) {
+  auto dpEnabled = VeloxBackend::get()->getBackendConf()->get<bool>(kDPEnabled, true);
+  if (!dpEnabled) {
+    DLOG(INFO) << "DP is disabled via config, return original plan.";
+    return std::nullopt;
+  }
+
+  std::string originalPlanStr;
+  substraitPlan.SerializeToString(&originalPlanStr);
+
+  std::string convertedPlanStr;
+  auto status = sparkle_plan(originalPlanStr, convertedPlanStr);
+  if (status != SparkleSuccess) {
+    DLOG(INFO) << "Failed to convert plan to DP sparkle plan." << substraitPlan.DebugString();
+    return std::nullopt;
+  }
+
+  ::substrait::Plan convertedPlan;
+  if (!convertedPlan.ParseFromString(convertedPlanStr)) {
+    VELOX_FAIL("Failed to parse DP annotated plan string back to Substrait plan");
+  }
+
+  return std::make_optional(convertedPlan);
 }
 
 } // namespace gluten

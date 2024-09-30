@@ -100,6 +100,11 @@ class SubstraitParser {
   template <typename T>
   static T getLiteralValue(const ::substrait::Expression::Literal& /* literal */);
 
+ /// @brief Get QFlow IR from AdvancedExtension.
+ /// @param extension AdvancedExtension.
+ /// @return QFlow IR.
+ static std::optional<std::string> getQFlowIR(const ::substrait::extensions::AdvancedExtension&);
+
  private:
   /// A map used for mapping Substrait function keywords into Velox functions'
   /// keywords. Key: the Substrait function keyword, Value: the Velox function

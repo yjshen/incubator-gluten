@@ -93,19 +93,19 @@ class SubstraitToVeloxPlanConverter {
   core::PlanNodePtr toVeloxPlan(const ::substrait::WindowGroupLimitRel& windowGroupLimitRel);
 
   /// Used to convert Substrait JoinRel into Velox PlanNode.
-  core::PlanNodePtr toVeloxPlan(const ::substrait::JoinRel& joinRel, const ::substrait::Rel& rel);
+  core::PlanNodePtr toVeloxPlan(const ::substrait::JoinRel& joinRel);
 
   /// Used to convert Substrait CrossRel into Velox PlanNode.
   core::PlanNodePtr toVeloxPlan(const ::substrait::CrossRel& crossRel);
 
   /// Used to convert Substrait AggregateRel into Velox PlanNode.
-  core::PlanNodePtr toVeloxPlan(const ::substrait::AggregateRel& aggRel, const ::substrait::Rel& rel);
+  core::PlanNodePtr toVeloxPlan(const ::substrait::AggregateRel& aggRel);
 
   /// Convert Substrait ProjectRel into Velox PlanNode.
-  core::PlanNodePtr toVeloxPlan(const ::substrait::ProjectRel& projectRel, const ::substrait::Rel& rel);
+  core::PlanNodePtr toVeloxPlan(const ::substrait::ProjectRel& projectRel);
 
   /// Convert Substrait FilterRel into Velox PlanNode.
-  core::PlanNodePtr toVeloxPlan(const ::substrait::FilterRel& filterRel, const ::substrait::Rel& rel);
+  core::PlanNodePtr toVeloxPlan(const ::substrait::FilterRel& filterRel);
 
   /// Convert Substrait FetchRel into Velox LimitNode.
   core::PlanNodePtr toVeloxPlan(const ::substrait::FetchRel& fetchRel);
@@ -117,7 +117,11 @@ class SubstraitToVeloxPlanConverter {
   core::PlanNodePtr toVeloxPlan(const ::substrait::ReadRel& readRel, const RowTypePtr& type);
 
   /// Convert Substrait SortRel into Velox OrderByNode.
-  core::PlanNodePtr toVeloxPlan(const ::substrait::SortRel& sortRel, const ::substrait::Rel& rel);
+  core::PlanNodePtr toVeloxPlan(const ::substrait::SortRel& sortRel);
+
+  // Intercept the original substrait plan from gluten and substitute with a new dp annotated one
+  // that contains QFlow info for dp compilation and execution later.
+  std::optional<::substrait::Plan> dpSubstraitInterception(const ::substrait::Plan& substraitPlan);
 
   /// Convert Substrait ReadRel into Velox PlanNode.
   /// Index: the index of the partition this item belongs to.
