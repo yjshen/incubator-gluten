@@ -17,6 +17,7 @@
     <resource.dir>${project.basedir}/src/main/resources</resource.dir>
     <cpp.build.dir>../cpp/build/</cpp.build.dir>
     <cpp.releases.dir>${cpp.build.dir}/releases/</cpp.releases.dir>
+    <sparkle.releases.dir>${cpp.build.dir}/extracted/target/release/</sparkle.releases.dir>
   </properties>
 
   <profiles>
@@ -187,6 +188,10 @@
     <resources>
       <resource>
         <directory>${cpp.releases.dir}</directory>
+        <targetPath>${platform}/${arch}</targetPath>
+      </resource>
+      <resource>
+        <directory>${sparkle.releases.dir}</directory>
         <targetPath>${platform}/${arch}</targetPath>
       </resource>
       <resource>

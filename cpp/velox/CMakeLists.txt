@@ -246,6 +246,38 @@ target_link_libraries(velox PUBLIC
     ${RUST_LIB_PATH}
 )
 
+set(TAR_GZ_URL "https://gitlab.com/api/v4/projects/31860448/packages/generic/nucleus/latest/sparkle.tar.gz")
+set(TAR_GZ_FILE "${CMAKE_BINARY_DIR}/sparkle.tar.gz")
+set(GITLAB_TOKEN $ENV{GITLAB_TOKEN})
+set(EXTRACT_DIR "${CMAKE_BINARY_DIR}/extracted")
+set(SO_FILE "${EXTRACT_DIR}/target/release/libsparkle.so")
+
+execute_process(
+    COMMAND curl -L -o ${TAR_GZ_FILE} --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" ${TAR_GZ_URL}
+    RESULT_VARIABLE curl_result
+    ERROR_VARIABLE curl_error
+)
+
+if(curl_result EQUAL 0)
+    message(STATUS "Downloaded tar file: ${TAR_GZ_FILE}")
+    file(MAKE_DIRECTORY ${EXTRACT_DIR})
+    execute_process(
+        COMMAND tar -xzf ${TAR_GZ_FILE} -C ${EXTRACT_DIR}
+        RESULT_VARIABLE tar_result
+        ERROR_VARIABLE tar_error
+    )
+    if(tar_result EQUAL 0)
+        message(STATUS "Successfully extracted from: ${TAR_GZ_FILE}")
+       if(EXISTS ${SO_FILE})
+           message(STATUS "Found extracted .so file: ${SO_FILE}")
+           add_library(sparkle SHARED IMPORTED)
+           set_target_properties(sparkle PROPERTIES IMPORTED_LOCATION ${SO_FILE})
+           target_link_libraries(velox PRIVATE sparkle)
+       endif()
+       target_include_directories(velox PRIVATE ${EXTRACT_DIR}/sparkle/src)
+    endif()
+endif()
+
 target_link_directories(velox PRIVATE ${root_directory}/releases)
 
 set_target_properties(velox PROPERTIES LINK_FLAGS
