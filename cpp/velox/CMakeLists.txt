@@ -303,7 +303,7 @@ if(BUILD_JEMALLOC)
   target_link_libraries(velox PUBLIC jemalloc::libjemalloc)
 endif()
 
-target_link_libraries(velox PUBLIC gluten cpp_rust_interop)
+target_link_libraries(velox PUBLIC gluten)
 
 # Requires VELOX_MONO_LIBRARY=ON when building Velox.
 import_library(facebook::velox ${VELOX_BUILD_PATH}/lib/libvelox.a)

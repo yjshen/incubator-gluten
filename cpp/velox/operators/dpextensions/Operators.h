@@ -10,7 +10,7 @@
 #include "Nodes.h"
 #include "IO.h"
 #include "velox/exec/Operator.h"
-#include "cpp_rust_interop/bridge.h"
+#include "sparkle.h"
 #include <cstdint>
 #include <iostream>
 

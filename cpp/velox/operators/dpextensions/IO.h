@@ -5,9 +5,10 @@
 #include "velox/common/base/BitUtil.h"
 #include "velox/type/Type.h"
 #include "velox/vector/TypeAliases.h"
-#include "cpp_rust_interop/bridge.h"
+#include "sparkle.h"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
+#include "velox/vector/FlatVector.h"
 #include <fmt/format.h>
 
 template <>

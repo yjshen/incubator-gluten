@@ -3,62 +3,6 @@
 #include <cstdint>
 #include <vector>
 #include <string>
-#include "rust/cxx.h"
-#include "dp_executor/src/lib.rs.h"
-
-uint32_t cpp_function(const std::string& s);
-
-bool canOffloadToDP(const std::vector<uint8_t>& serializedRel);
-
-uint64_t compileSubstraitToDFG(const std::vector<uint8_t>& serializedRel);
-
-uint8_t const *evaluateDFG(uint64_t dfgInstanceId, uint8_t const *inputPtr);
-
-void evaluateDFGBuild(uint64_t dfgInstanceId, uint8_t const *inputPtr);
-
-void evaluateDFGPartialBuild(uint64_t dfgInstanceId, uint8_t const *inputPtr);
-
-void dfgNoMoreInput(uint64_t dfgInstanceId);
-
-bool dfgResultHasNext(uint64_t dfgInstanceId);
-
-uint8_t const *dfgResultNext(uint64_t dfgInstanceId);
-
-void dfgClose(uint64_t dfgInstanceId);
-
-uint64_t dfgMemoryUsage(uint64_t dfgInstanceId);
-
-uint64_t dfgSpill(uint64_t dfgInstanceId);
-
-// MergeSource functions
-int64_t compileDFGMergeSource(const std::vector<uint8_t>& serializedRel);
-
-const uint8_t* dfgMergeSourceNext(int64_t dfgInstanceId);
-
-void dfgMergeSourceEnqueue(int64_t dfgInstanceId, const uint8_t* inputPtr);
-
-bool dfgMergeSourceIsFull(int64_t dfgInstanceId);
-
-void dfgMergeSourceNoMoreInput(int64_t dfgInstanceId);
-
-void dfgMergeSourceClose(int64_t dfgInstanceId);
-
-// MergeJoin functions
-int64_t compileDFGMergeJoin(const std::vector<uint8_t>& serializedRel);
-
-bool dfgMergeJoinNeedsInput(int64_t dfgInstanceId);
-
-void dfgMergeJoinAddInput(int64_t dfgInstanceId, const uint8_t* inputPtr);
-
-bool dfgMergeJoinIsBlocked(int64_t dfgInstanceId);
-
-const uint8_t* dfgMergeJoinGetOutput(int64_t dfgInstanceId);
-
-bool dfgMergeJoinIsFinished(int64_t dfgInstanceId);
-
-void dfgMergeJoinNoMoreInput(int64_t dfgInstanceId);
-
-void dfgMergeJoinClose(int64_t dfgInstanceId);
 
 typedef enum {
   SparkleSuccess = 0,
@@ -121,7 +65,7 @@ SparkleStatus_t sparkle_send_metadata(SparkleHandle_t handle,
 /// @param string_data TBD
 /// @param string_data_len TBD
 /// @return 0, i.e., 'SparkleSuccess' if successfully sent, non-zero otherwise
-SparkleStatus_t sparkle_send_data(SparkleHandle_t handle, uint8_t type,
+SparkleStatus_t sparkle_send_data(SparkleHandle_t handle, int32_t type,
                                   uint8_t *nulls, uint64_t nulls_len,
                                   uint8_t *values, uint64_t values_len,
                                   std::vector<uint8_t *> &string_data,
@@ -152,6 +96,8 @@ SparkleStatus_t sparkle_recv_metadata(SparkleHandle_t handle,
  * @param handle Handle to the sparkle backend
  * @param column_index The index of the column for which to retrieve information.
  * @param type The data type of the column (as defined in Velox's type system).
+ * @param nulls_len Length of the null bitmap in bytes
+ * @param values_len Length of the values buffer in bytes
  * @param[out] lengths A vector to be filled with the lengths of each variable-length element.
  *
  * @return SparkleStatus_t indicating the success or failure of the operation.
@@ -159,25 +105,23 @@ SparkleStatus_t sparkle_recv_metadata(SparkleHandle_t handle,
  * @note The size of the `lengths` vector should be pre-allocated to match the number of rows
  *       obtained from sparkle_recv_metadata. This function fills the vector without resizing it. 
  */
-SparkleStatus_t sparkle_recv_variable_length_info(
-    SparkleHandle_t handle,
-    uint32_t column_index,
-    uint8_t type,
-    std::vector<uint64_t>& lengths);
+SparkleStatus_t sparkle_recv_data_lengths(SparkleHandle_t handle,
+                                          uint32_t column_index,
+                                          uint8_t &type,
+                                          uint64_t &nulls_len,
+                                          uint64_t &values_len,
+                                          std::vector<uint64_t>& lengths);
 
 /// @brief Receives a column in output input batch of rows from sparkle backend
 /// @param handle Handle to the sparkle backend
-/// @param type Type of the column
+/// @param column_index The index of the column for which to retrieve data
 /// @param nulls Pointer to the null bitmap
-/// @param nulls_len Length of the null bitmap in bytes
 /// @param values Pointer to the values
-/// @param values_len Length of the values buffer in bytes
 /// @param string_data Pointers to string data buffer
-/// @param string_data_len Pointers to string data buffer lengths
 /// @return 0, i.e., 'SparkleSuccess' if successfully received, non-zero
 /// otherwise
-SparkleStatus_t sparkle_recv_data(SparkleHandle_t handle, uint8_t &type,
-                                  uint8_t *&nulls, uint64_t &nulls_len,
-                                  uint8_t *&values, uint64_t &values_len,
-                                  std::vector<uint8_t *> &string_data,
-                                  std::vector<uint64_t> &string_data_len);
+SparkleStatus_t sparkle_recv_data(SparkleHandle_t handle,
+                                  uint32_t column_index,
+                                  uint8_t *nulls,
+                                  uint8_t *values,
+                                  std::vector<uint8_t *> &string_data);

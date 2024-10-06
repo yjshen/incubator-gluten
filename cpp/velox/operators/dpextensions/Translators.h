@@ -4,7 +4,6 @@
 
 #include "velox/core/PlanNode.h"
 #include "velox/exec/Operator.h"
-#include "rust/cxx.h"
 #include "velox/operators/dpextensions/Nodes.h"
 #include "velox/operators/dpextensions/Operators.h"
 
