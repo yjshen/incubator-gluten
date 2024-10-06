@@ -41,7 +41,7 @@ class SubstraitVeloxExprConverter {
 
   /// Stores the variant and its type.
   struct TypedVariant {
-    variant veloxVariant;
+    facebook::velox::variant veloxVariant;
     TypePtr variantType;
   };
 

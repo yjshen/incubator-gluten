@@ -358,7 +358,7 @@ class SubstraitToVeloxPlanConverter {
 
     // Add a lower bound to the range. Multiple lower bounds are
     // regarded to be in 'or' relation.
-    void setLower(const std::optional<variant>& left, bool isExclusive) {
+    void setLower(const std::optional<facebook::velox::variant>& left, bool isExclusive) {
       lowerBounds_.emplace_back(left);
       lowerExclusives_.emplace_back(isExclusive);
       if (!initialized_) {
@@ -368,7 +368,7 @@ class SubstraitToVeloxPlanConverter {
 
     // Add a upper bound to the range. Multiple upper bounds are
     // regarded to be in 'or' relation.
-    void setUpper(const std::optional<variant>& right, bool isExclusive) {
+    void setUpper(const std::optional<facebook::velox::variant>& right, bool isExclusive) {
       upperBounds_.emplace_back(right);
       upperExclusives_.emplace_back(isExclusive);
       if (!initialized_) {
@@ -377,7 +377,7 @@ class SubstraitToVeloxPlanConverter {
     }
 
     // Set a list of values to be used in the push down of 'in' expression.
-    void setValues(const std::vector<variant>& values) {
+    void setValues(const std::vector<facebook::velox::variant>& values) {
       for (const auto& value : values) {
         values_.emplace_back(value);
       }
@@ -387,7 +387,7 @@ class SubstraitToVeloxPlanConverter {
     }
 
     // Set a value for the not(equal) condition.
-    void setNotValue(const std::optional<variant>& notValue) {
+    void setNotValue(const std::optional<facebook::velox::variant>& notValue) {
       notValue_ = notValue;
       if (!initialized_) {
         initialized_ = true;
@@ -395,7 +395,7 @@ class SubstraitToVeloxPlanConverter {
     }
 
     // Set a list of values to be used in the push down of 'not in' expression.
-    void setNotValues(const std::vector<variant>& notValues) {
+    void setNotValues(const std::vector<facebook::velox::variant>& notValues) {
       for (const auto& value : notValues) {
         notValues_.emplace_back(value);
       }
@@ -419,19 +419,19 @@ class SubstraitToVeloxPlanConverter {
     std::vector<bool> upperExclusives_;
 
     // A value should not be equal to.
-    std::optional<variant> notValue_ = std::nullopt;
+    std::optional<facebook::velox::variant> notValue_ = std::nullopt;
 
     // The lower bounds in 'or' relation.
-    std::vector<std::optional<variant>> lowerBounds_;
+    std::vector<std::optional<facebook::velox::variant>> lowerBounds_;
 
     // The upper bounds in 'or' relation.
-    std::vector<std::optional<variant>> upperBounds_;
+    std::vector<std::optional<facebook::velox::variant>> upperBounds_;
 
     // The list of values used in 'in' expression.
-    std::vector<variant> values_;
+    std::vector<facebook::velox::variant> values_;
 
     // The list of values should not be equal to.
-    std::vector<variant> notValues_;
+    std::vector<facebook::velox::variant> notValues_;
   };
 
   /// Returns unique ID to use for plan node. Produces sequential numbers
@@ -507,14 +507,14 @@ class SubstraitToVeloxPlanConverter {
   /// extracted from filter condition.
   static void setColumnFilterInfo(
       const std::string& filterName,
-      std::optional<variant> literalVariant,
+      std::optional<facebook::velox::variant> literalVariant,
       FilterInfo& columnToFilterInfo,
       bool reverse);
 
   /// Create a multirange to specify the filter 'x != notValue' with:
   /// x > notValue or x < notValue.
   template <TypeKind KIND, typename FilterType>
-  void createNotEqualFilter(variant notVariant, bool nullAllowed, std::vector<std::unique_ptr<FilterType>>& colFilters);
+  void createNotEqualFilter(facebook::velox::variant notVariant, bool nullAllowed, std::vector<std::unique_ptr<FilterType>>& colFilters);
 
   /// Create a values range to handle (not) in filter.
   /// variants: the list of values extracted from the (not) in expression.
@@ -522,7 +522,7 @@ class SubstraitToVeloxPlanConverter {
   /// inputName: the column input name.
   template <TypeKind KIND>
   void setInFilter(
-      const std::vector<variant>& variants,
+      const std::vector<facebook::velox::variant>& variants,
       bool nullAllowed,
       bool negated,
       const std::string& inputName,

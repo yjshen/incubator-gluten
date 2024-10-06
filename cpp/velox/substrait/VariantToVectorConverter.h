@@ -25,6 +25,6 @@ namespace gluten {
 
 /// Create Base Vector from velox variants.
 /// Only scalar types are supported except VARBINARY.
-VectorPtr setVectorFromVariants(const TypePtr& type, const std::vector<variant>& values, memory::MemoryPool* pool);
+VectorPtr setVectorFromVariants(const TypePtr& type, const std::vector<facebook::velox::variant>& values, memory::MemoryPool* pool);
 
 } // namespace gluten
