@@ -4,10 +4,9 @@
 #include <vector>
 #include <optional>
 #include <cstdint>
-#include "rust/cxx.h"
 #include "velox/core/PlanNode.h"
 #include "substrait/algebra.pb.h"
-#include "cpp_rust_interop/bridge.h"
+#include "sparkle.h"
 #include "operators/dpextensions/Nodes.h"
 
 namespace gluten {

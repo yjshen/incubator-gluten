@@ -26,8 +26,7 @@
 #include "velox/compute/VeloxBackend.h"
 
 #include <cstdint>
-#include "rust/cxx.h"
-#include "cpp_rust_interop/bridge.h"
+#include "sparkle.h"
 #include "operators/dpextensions/Nodes.h"
 
 #include "utils/ConfigExtractor.h"
