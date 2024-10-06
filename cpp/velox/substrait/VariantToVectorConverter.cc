@@ -23,7 +23,7 @@ namespace gluten {
 namespace {
 template <TypeKind KIND>
 VectorPtr
-setVectorFromVariantsByKind(const std::vector<variant>& values, const TypePtr& type, memory::MemoryPool* pool) {
+setVectorFromVariantsByKind(const std::vector<facebook::velox::variant>& values, const TypePtr& type, memory::MemoryPool* pool) {
   using T = typename TypeTraits<KIND>::NativeType;
 
   auto flatVector = BaseVector::create<FlatVector<T>>(type, values.size(), pool);
@@ -40,7 +40,7 @@ setVectorFromVariantsByKind(const std::vector<variant>& values, const TypePtr& t
 
 template <>
 VectorPtr setVectorFromVariantsByKind<TypeKind::VARBINARY>(
-    const std::vector<variant>& /* values */,
+    const std::vector<facebook::velox::variant>& /* values */,
     const TypePtr& /*type*/,
     memory::MemoryPool* /* pool */) {
   VELOX_UNSUPPORTED("Return of VARBINARY data is not supported");
@@ -48,7 +48,7 @@ VectorPtr setVectorFromVariantsByKind<TypeKind::VARBINARY>(
 
 template <>
 VectorPtr setVectorFromVariantsByKind<TypeKind::VARCHAR>(
-    const std::vector<variant>& values,
+    const std::vector<facebook::velox::variant>& values,
     const TypePtr& type,
     memory::MemoryPool* pool) {
   auto flatVector = BaseVector::create<FlatVector<StringView>>(type, values.size(), pool);
@@ -64,7 +64,7 @@ VectorPtr setVectorFromVariantsByKind<TypeKind::VARCHAR>(
 }
 } // namespace
 
-VectorPtr setVectorFromVariants(const TypePtr& type, const std::vector<variant>& values, memory::MemoryPool* pool) {
+VectorPtr setVectorFromVariants(const TypePtr& type, const std::vector<facebook::velox::variant>& values, memory::MemoryPool* pool) {
   return VELOX_DYNAMIC_SCALAR_TYPE_DISPATCH(setVectorFromVariantsByKind, type->kind(), values, type, pool);
 }
 } // namespace gluten

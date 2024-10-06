@@ -889,7 +889,7 @@ const core::WindowNode::Frame SubstraitToVeloxPlanConverter::createWindowFrame(
       VELOX_CHECK(
           frame.type != core::WindowNode::WindowType::kRange,
           "for RANGE frame offset, we should pre-calculate the range frame boundary and pass the column reference, but got a constant offset.")
-      return std::make_shared<core::ConstantTypedExpr>(BIGINT(), variant(offset));
+      return std::make_shared<core::ConstantTypedExpr>(BIGINT(), facebook::velox::variant(offset));
     } else {
       VELOX_CHECK(
           frame.type != core::WindowNode::WindowType::kRows, "for ROW frame offset, we should pass a constant offset.")
@@ -1304,7 +1304,7 @@ core::PlanNodePtr SubstraitToVeloxPlanConverter::toVeloxPlan(
 
     for (int64_t col = 0; col < numColumns; ++col) {
       const TypePtr& outputChildType = type->childAt(col);
-      std::vector<variant> batchChild;
+      std::vector<facebook::velox::variant> batchChild;
       batchChild.reserve(batchSize);
       for (int64_t batchId = 0; batchId < batchSize; batchId++) {
         // each value in the batch
@@ -1850,7 +1850,7 @@ bool SubstraitToVeloxPlanConverter::RangeRecorder::setCertainRangeForFunction(
 
 void SubstraitToVeloxPlanConverter::setColumnFilterInfo(
     const std::string& filterName,
-    std::optional<variant> literalVariant,
+    std::optional<facebook::velox::variant> literalVariant,
     FilterInfo& columnFilterInfo,
     bool reverse) {
   if (filterName == sIsNotNull) {
@@ -1902,9 +1902,9 @@ void SubstraitToVeloxPlanConverter::setColumnFilterInfo(
 }
 
 template <facebook::velox::TypeKind kind>
-variant getVariantFromLiteral(const ::substrait::Expression::Literal& literal) {
+facebook::velox::variant getVariantFromLiteral(const ::substrait::Expression::Literal& literal) {
   using LitT = typename facebook::velox::TypeTraits<kind>::NativeType;
-  return variant(SubstraitParser::getLiteralValue<LitT>(literal));
+  return facebook::velox::variant(SubstraitParser::getLiteralValue<LitT>(literal));
 }
 
 void SubstraitToVeloxPlanConverter::setFilterInfo(
@@ -1960,7 +1960,7 @@ void SubstraitToVeloxPlanConverter::setFilterInfo(
 
   // Set the extracted bound to the specific column.
   uint32_t colIdxVal = colIdx.value();
-  std::optional<variant> val;
+  std::optional<facebook::velox::variant> val;
 
   auto inputType = inputTypeList[colIdxVal];
   switch (inputType->kind()) {
@@ -1992,7 +1992,7 @@ void SubstraitToVeloxPlanConverter::setFilterInfo(
 
 template <TypeKind KIND, typename FilterType>
 void SubstraitToVeloxPlanConverter::createNotEqualFilter(
-    variant notVariant,
+    facebook::velox::variant notVariant,
     bool nullAllowed,
     std::vector<std::unique_ptr<FilterType>>& colFilters) {
   using NativeType = typename RangeTraits<KIND>::NativeType;
@@ -2045,7 +2045,7 @@ void SubstraitToVeloxPlanConverter::createNotEqualFilter(
 
 template <TypeKind KIND>
 void SubstraitToVeloxPlanConverter::setInFilter(
-    const std::vector<variant>& variants,
+    const std::vector<facebook::velox::variant>& variants,
     bool nullAllowed,
     bool negated,
     const std::string& inputName,
@@ -2053,7 +2053,7 @@ void SubstraitToVeloxPlanConverter::setInFilter(
 
 template <>
 void SubstraitToVeloxPlanConverter::setInFilter<TypeKind::BIGINT>(
-    const std::vector<variant>& variants,
+    const std::vector<facebook::velox::variant>& variants,
     bool nullAllowed,
     bool negated,
     const std::string& inputName,
@@ -2073,7 +2073,7 @@ void SubstraitToVeloxPlanConverter::setInFilter<TypeKind::BIGINT>(
 
 template <>
 void SubstraitToVeloxPlanConverter::setInFilter<TypeKind::INTEGER>(
-    const std::vector<variant>& variants,
+    const std::vector<facebook::velox::variant>& variants,
     bool nullAllowed,
     bool negated,
     const std::string& inputName,
@@ -2095,7 +2095,7 @@ void SubstraitToVeloxPlanConverter::setInFilter<TypeKind::INTEGER>(
 
 template <>
 void SubstraitToVeloxPlanConverter::setInFilter<TypeKind::SMALLINT>(
-    const std::vector<variant>& variants,
+    const std::vector<facebook::velox::variant>& variants,
     bool nullAllowed,
     bool negated,
     const std::string& inputName,
@@ -2117,7 +2117,7 @@ void SubstraitToVeloxPlanConverter::setInFilter<TypeKind::SMALLINT>(
 
 template <>
 void SubstraitToVeloxPlanConverter::setInFilter<TypeKind::TINYINT>(
-    const std::vector<variant>& variants,
+    const std::vector<facebook::velox::variant>& variants,
     bool nullAllowed,
     bool negated,
     const std::string& inputName,
@@ -2139,7 +2139,7 @@ void SubstraitToVeloxPlanConverter::setInFilter<TypeKind::TINYINT>(
 
 template <>
 void SubstraitToVeloxPlanConverter::setInFilter<TypeKind::VARCHAR>(
-    const std::vector<variant>& variants,
+    const std::vector<facebook::velox::variant>& variants,
     bool nullAllowed,
     bool negated,
     const std::string& inputName,
@@ -2284,7 +2284,7 @@ void SubstraitToVeloxPlanConverter::constructSubfieldFilters(
 
     // Handle not(equal) filter.
     if (filterInfo.notValue_) {
-      variant notVariant = filterInfo.notValue_.value();
+      facebook::velox::variant notVariant = filterInfo.notValue_.value();
       createNotEqualFilter<KIND, FilterType>(notVariant, filterInfo.nullAllowed_, colFilters);
       // Currently, Not-equal cannot coexist with other filter conditions
       // due to multirange is in 'OR' relation but 'AND' is needed.
@@ -2353,14 +2353,14 @@ void SubstraitToVeloxPlanConverter::constructSubfieldFilters(
     for (uint32_t idx = 0; idx < rangeSize; idx++) {
       if (idx < filterInfo.lowerBounds_.size() && filterInfo.lowerBounds_[idx]) {
         lowerUnbounded = false;
-        variant lowerVariant = filterInfo.lowerBounds_[idx].value();
+        facebook::velox::variant lowerVariant = filterInfo.lowerBounds_[idx].value();
         lowerBound = lowerVariant.value<NativeType>();
         lowerExclusive = filterInfo.lowerExclusives_[idx];
       }
 
       if (idx < filterInfo.upperBounds_.size() && filterInfo.upperBounds_[idx]) {
         upperUnbounded = false;
-        variant upperVariant = filterInfo.upperBounds_[idx].value();
+        facebook::velox::variant upperVariant = filterInfo.upperBounds_[idx].value();
         upperBound = upperVariant.value<NativeType>();
         upperExclusive = filterInfo.upperExclusives_[idx];
       }
@@ -2577,7 +2577,7 @@ void SubstraitToVeloxPlanConverter::setFilterInfo(
 
   // Get the value list.
   const auto& options = singularOrList.options();
-  std::vector<variant> variants;
+  std::vector<facebook::velox::variant> variants;
   variants.reserve(options.size());
   for (const auto& option : options) {
     VELOX_CHECK(option.has_literal(), "Literal is expected as option.");
