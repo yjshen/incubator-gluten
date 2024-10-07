@@ -1,0 +1,57 @@
+image: registry.gitlab.com/datapelago/docker-images/builder-ubuntu-22.04:0.1.19.5
+
+variables:
+  CARGO_TARGET_DIR: /cache/rustbuild
+
+.authenticate:
+  before_script:
+    - rm -f ${HOME}/.gitconfig
+    - git config --global url."https://${CI_REGISTRY_USER}:${CI_JOB_TOKEN}@gitlab.com/".insteadOf "ssh://git@gitlab.com/"
+    - git config --global credential.helper store
+    - export git_creds_file=${HOME}/.git-credentials
+    - rm -f $git_creds_file
+    - touch $git_creds_file
+    - echo "https://${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD}@gitlab.com" > $git_creds_file
+
+.enable_debugging:
+  before_script:
+    - |
+      if [[ "$ENABLE_DEBUG" == "true" ]]; then
+        echo "ENABLE_DEBUG is set to true"
+        set -x
+      fi
+
+stages:
+  - build
+
+build-spark:
+  stage: build
+  tags:
+    - spark-build
+  extends:
+    - .authenticate
+  script:
+    - |
+      echo "----- Print env ----"
+      env | sort
+      echo -e "\nInstall Velox Dependencies via vcpkg"
+      source dev/vcpkg/env.sh
+      echo -e "\n Compile Gluten CPP with Velox Backend"
+      ./dev/builddeps-veloxbe.sh --build_benchmarks=ON --build_examples=ON --enable_gcs=ON --enable_vcpkg=ON
+      echo -e "\n Compile Gluten Include-All JAR"
+      mvn clean package -Pbackends-velox -Pspark-${SPARK_VERSION} -Phudi -DskipTests || echo "Build failed"
+
+      echo "Generated jar files: `ls -l ${CI_PROJECT_DIR}/package/target/*.jar`"
+      gluten_jar=$(ls ${CI_PROJECT_DIR}/package/target/gluten-velox-bundle-spark${SPARK_VERSION}*SNAPSHOT.jar)
+      echo -e "\n gluten_jar=$gluten_jar"
+      echo "Checking if the app jar exists"
+      if [[ -f "${gluten_jar}" ]]; then
+        echo "Jar is available: ${gluten_jar}"
+        ls -l $gluten_jar
+      else
+        echo "Jar not available: ${gluten_jar}"
+      fi
+  artifacts:
+    when: always
+    paths:
+      - ${CI_PROJECT_DIR}/package/target/*.jar
