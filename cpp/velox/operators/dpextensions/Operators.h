@@ -135,6 +135,17 @@ public:
     }
 
     /**
+     * @brief Indicates that no more input will be added.
+     * This method is called when all input has been processed.
+     * Child classes can override this method to provide custom behavior.
+     */
+    void noMoreInput() override {
+        Operator::noMoreInput();
+        auto status = sparkle_send_done(sparkle_handle_);
+        VELOX_CHECK_EQ(status, SparkleSuccess, "Failed to send done to sparkle backend");
+    }
+
+    /**
      * Overwrite the name of the operator.
      * 
      * @param newName the new name of the operator.
@@ -356,10 +367,6 @@ public:
         // evaluateDFGBuild(dfg_instance_id_, inputPtr);
     }
 
-    void noMoreInput() override {
-        Operator::noMoreInput();
-        // dfgNoMoreInput(dfg_instance_id_);
-    }
 
     facebook::velox::RowVectorPtr getOutput() override {
         if (finished_ || !noMoreInput_) {
