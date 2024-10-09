@@ -3,6 +3,7 @@
 #pragma once
 
 #include <vector>
+#include "config/GlutenConfig.h"
 #include "velox/exec/Driver.h"
 #include "velox/exec/Operator.h"
 #include "velox/operators/dpextensions/Operators.h"
@@ -12,6 +13,12 @@ namespace gluten {
 class DPOperatorConsolidationAdapter {
  public:
   bool adapt(const facebook::velox::exec::DriverFactory& driverFactory, facebook::velox::exec::Driver& driver) {
+    const auto& queryConfig = driver.driverCtx()->queryConfig();
+    auto enabled = queryConfig.get<bool>(kDPOpFusionEnabled, true);
+    if(!enabled) {
+        DLOG(INFO) << "dp operator fusion feature is not enabled" << std::endl;
+        return true;
+    }
     auto operators = driver.operators();
     std::vector<facebook::velox::exec::Operator*> dpOperators;
 

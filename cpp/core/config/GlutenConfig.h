@@ -78,6 +78,8 @@ const std::string kDPAggregateEnabled = "spark.gluten.dp.aggregate.enabled";
 const std::string kDPOrderByEnabled = "spark.gluten.dp.orderby.enabled";
 const std::string kDPHashJoinEnabled = "spark.gluten.dp.hashjoin.enabled";
 const std::string kDPMergeJoinEnabled = "spark.gluten.dp.mergejoin.enabled";
+const std::string kDPOpFusionEnabled = "spark.gluten.dp.opFusion.enabled";
+const std::string kDPBatchResizerEnabled = "spark.gluten.dp.batchResizer.enabled";
 const std::string kDPBatchSize = "spark.gluten.dp.batchSize";
 const int32_t kDPBatchSizeDefault = 1024 * 1024;
 

@@ -645,6 +645,8 @@ object GlutenConfig {
   val GLUTEN_DP_HASH_JOIN_ENABLED = "spark.gluten.dp.hashjoin.enabled"
   val GLUTEN_DP_MERGE_JOIN_ENABLED = "spark.gluten.dp.mergejoin.enabled"
   val GLUTEN_DP_BATCH_SIZE = "spark.gluten.dp.batchSize"
+  val GLUTEN_DP_OP_FUSION_ENABLED = "spark.gluten.dp.opFusion.enabled"
+  val GLUTEN_DP_BATCH_RESIZER_ENABLED  = "spark.gluten.dp.batchResizer.enabled"
 
   var ins: GlutenConfig = _
 
@@ -2189,4 +2191,19 @@ object GlutenConfig {
         "Extra batch resizing occurs when the DP batchSize differs from the Velox batchSize.")
       .intConf
       .createWithDefault(1024 * 1024)
+
+  val DP_OP_FUSION_ENABLED =
+    buildConf(GlutenConfig.GLUTEN_DP_OP_FUSION_ENABLED)
+      .internal()
+      .doc("Use DataPelago fusion adapter to fuse adjacent dp operators.")
+      .booleanConf
+      .createWithDefault(false)
+
+  val DP_BATCH_RESIZER_ENABLED =
+    buildConf(GlutenConfig.GLUTEN_DP_BATCH_RESIZER_ENABLED)
+      .internal()
+      .doc("Use DataPelago batch resizer adapter to add resize operator when output of" +
+        "dp operator is consumed by velox operator.")
+      .booleanConf
+      .createWithDefault(false)
 }

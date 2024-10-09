@@ -508,6 +508,10 @@ std::unordered_map<std::string, std::string> WholeStageResultIterator::getQueryC
     // spark.gluten.sql.columnar.backend.velox.IOThreads is set to 0
     configs[velox::core::QueryConfig::kMaxSplitPreloadPerDriver] =
         std::to_string(veloxCfg_->get<int32_t>(kVeloxSplitPreloadPerDriver, 2));
+    configs[kDPOpFusionEnabled] =
+        std::to_string(veloxCfg_->get<bool>(kDPOpFusionEnabled, true));
+    configs[kDPBatchResizerEnabled] =
+        std::to_string(veloxCfg_->get<bool>(kDPBatchResizerEnabled, true));
 
     // Disable driver cpu time slicing.
     configs[velox::core::QueryConfig::kDriverCpuTimeSliceLimitMs] = "0";
