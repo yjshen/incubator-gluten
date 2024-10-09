@@ -301,13 +301,13 @@ private:
      * @return A vector of the specified type and size.
      */
     facebook::velox::VectorPtr createVariableLengthVector(const facebook::velox::TypePtr& type, vector_size_t size, int columnIndex) {
-        std::vector<uint64_t> lengths(size);
-        auto status = sparkle_recv_variable_length_info(
-            handle_, 
-            columnIndex,
-            static_cast<uint8_t>(type->kind()), 
-            lengths);
-        VELOX_CHECK_EQ(status, SparkleSuccess, "Failed to receive variable length info");
+//        std::vector<uint64_t> lengths(size);
+//        auto status = sparkle_recv_variable_length_info(
+//            handle_, 
+//            columnIndex,
+//            static_cast<uint8_t>(type->kind()),
+//            lengths);
+//        VELOX_CHECK_EQ(status, SparkleSuccess, "Failed to receive variable length info");
 
         // TODO: return correct vector based on type
         return nullptr;

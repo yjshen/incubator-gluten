@@ -234,17 +234,12 @@ target_include_directories(
   velox PUBLIC ${CMAKE_SYSTEM_INCLUDE_PATH} ${JNI_INCLUDE_DIRS}
                ${CMAKE_CURRENT_SOURCE_DIR} ${VELOX_HOME}/ ${VELOX_BUILD_PATH}/)
 
-target_include_directories(velox PUBLIC ${CMAKE_SOURCE_DIR} ${RUST_GENERATED_INCLUDE})
+target_include_directories(velox PUBLIC ${CMAKE_SOURCE_DIR})
 
-add_dependencies(velox ensure_rust_lib)
 
 set_target_properties(velox PROPERTIES LIBRARY_OUTPUT_DIRECTORY
                                        ${root_directory}/releases)
 
-target_link_libraries(velox PUBLIC
-    cpp_rust_interop
-    ${RUST_LIB_PATH}
-)
 
 set(TAR_GZ_URL "https://gitlab.com/api/v4/projects/31860448/packages/generic/nucleus/latest/sparkle.tar.gz")
 set(TAR_GZ_FILE "${CMAKE_BINARY_DIR}/sparkle.tar.gz")
@@ -279,10 +274,6 @@ if(curl_result EQUAL 0)
 endif()
 
 target_link_directories(velox PRIVATE ${root_directory}/releases)
-
-set_target_properties(velox PROPERTIES LINK_FLAGS
-    "-Wl,--no-as-needed -Wl,--whole-archive ${RUST_LIB_PATH} -Wl,--no-whole-archive"
-)
 
 # If folly is not installed in system lib paths, please add
 # `-DCMAKE_PREFIX_PATH="${folly lib path}" to cmake arguments. It is also
