@@ -241,36 +241,68 @@ set_target_properties(velox PROPERTIES LIBRARY_OUTPUT_DIRECTORY
                                        ${root_directory}/releases)
 
 
-set(TAR_GZ_URL "https://gitlab.com/api/v4/projects/31860448/packages/generic/nucleus/latest/sparkle.tar.gz")
-set(TAR_GZ_FILE "${CMAKE_BINARY_DIR}/sparkle.tar.gz")
-set(GITLAB_TOKEN $ENV{GITLAB_TOKEN})
-set(EXTRACT_DIR "${CMAKE_BINARY_DIR}/extracted")
-set(SO_FILE "${EXTRACT_DIR}/target/release/libsparkle.so")
+# Setup Sparkle library
+function(setup_sparkle_library sparkle_header_dir sparkle_so_file)
+  if(EXISTS ${sparkle_header_dir} AND EXISTS ${sparkle_so_file})
+    message(STATUS "Using sparkle.h from directory: ${sparkle_header_dir}")
+    message(STATUS "Using sparkle library: ${sparkle_so_file}")
+    
+    add_library(sparkle SHARED IMPORTED)
+    set_target_properties(sparkle PROPERTIES IMPORTED_LOCATION ${sparkle_so_file})
+    target_include_directories(velox PRIVATE ${sparkle_header_dir})
+    target_link_libraries(velox PRIVATE sparkle)
+    set(SPARKLE_SETUP_SUCCESS TRUE PARENT_SCOPE)
+  else()
+    message(WARNING "Sparkle directory or library not found: ${sparkle_header_dir}, ${sparkle_so_file}")
+    set(SPARKLE_SETUP_SUCCESS FALSE PARENT_SCOPE)
+  endif()
+endfunction()
 
-execute_process(
+# Check for local Sparkle directory and library, prefer local if both are set, and warn if partially set
+if(DEFINED ENV{SPARKLE_HEADER_DIR} AND DEFINED ENV{SPARKLE_SO_FILE})
+  setup_sparkle_library($ENV{SPARKLE_HEADER_DIR} $ENV{SPARKLE_SO_FILE})
+elseif(DEFINED ENV{SPARKLE_HEADER_DIR} OR DEFINED ENV{SPARKLE_SO_FILE})
+  message(WARNING "Both SPARKLE_HEADER_DIR and SPARKLE_SO_FILE should be set to use local Sparkle library.
+   Trying to download the latest version from GitLab.")
+endif()
+
+# If local setup failed or wasn't attempted, try downloading
+if(NOT SPARKLE_SETUP_SUCCESS)
+  if(NOT DEFINED ENV{GITLAB_TOKEN})
+    message(FATAL_ERROR "Either both SPARKLE_HEADER_DIR and SPARKLE_SO_FILE should be set to use local Sparkle library, 
+    or GITLAB_TOKEN environment variable should be set to download the latest sparkle.
+    Please set environment variable(s) and try again.")
+  endif()
+
+  set(TAR_GZ_URL "https://gitlab.com/api/v4/projects/31860448/packages/generic/nucleus/latest/sparkle.tar.gz")
+  set(TAR_GZ_FILE "${CMAKE_BINARY_DIR}/sparkle.tar.gz")
+  set(GITLAB_TOKEN $ENV{GITLAB_TOKEN})
+  set(EXTRACT_DIR "${CMAKE_BINARY_DIR}/extracted")
+  set(SPARKLE_SO_FILE "${EXTRACT_DIR}/target/release/libsparkle.so")
+
+  execute_process(
     COMMAND curl -L -o ${TAR_GZ_FILE} --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" ${TAR_GZ_URL}
     RESULT_VARIABLE curl_result
     ERROR_VARIABLE curl_error
-)
+  )
 
-if(curl_result EQUAL 0)
+  if(curl_result EQUAL 0)
     message(STATUS "Downloaded tar file: ${TAR_GZ_FILE}")
     file(MAKE_DIRECTORY ${EXTRACT_DIR})
     execute_process(
-        COMMAND tar -xzf ${TAR_GZ_FILE} -C ${EXTRACT_DIR}
-        RESULT_VARIABLE tar_result
-        ERROR_VARIABLE tar_error
+      COMMAND tar -xzf ${TAR_GZ_FILE} -C ${EXTRACT_DIR}
+      RESULT_VARIABLE tar_result
+      ERROR_VARIABLE tar_error
     )
     if(tar_result EQUAL 0)
-        message(STATUS "Successfully extracted from: ${TAR_GZ_FILE}")
-       if(EXISTS ${SO_FILE})
-           message(STATUS "Found extracted .so file: ${SO_FILE}")
-           add_library(sparkle SHARED IMPORTED)
-           set_target_properties(sparkle PROPERTIES IMPORTED_LOCATION ${SO_FILE})
-           target_link_libraries(velox PRIVATE sparkle)
-       endif()
-       target_include_directories(velox PRIVATE ${EXTRACT_DIR}/sparkle/src)
+      message(STATUS "Successfully extracted from: ${TAR_GZ_FILE}")
+      setup_sparkle_library(${EXTRACT_DIR}/sparkle/src ${SPARKLE_SO_FILE})
     endif()
+  endif()
+endif()
+
+if(NOT SPARKLE_SETUP_SUCCESS)
+  message(FATAL_ERROR "Failed to setup Sparkle library")
 endif()
 
 target_link_directories(velox PRIVATE ${root_directory}/releases)
