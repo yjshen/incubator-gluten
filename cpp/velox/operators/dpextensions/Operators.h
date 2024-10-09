@@ -11,6 +11,7 @@
 #include "IO.h"
 #include "velox/exec/Operator.h"
 #include "sparkle.h"
+#include "velox/type/Type.h"
 #include <cstdint>
 #include <iostream>
 
@@ -35,6 +36,7 @@ public:
           name_(planNode->name().data()),
           planNode_(planNode) {}
 
+    // Constructor with operatorType
     DPBaseOperator(
         int32_t operatorId,
         facebook::velox::exec::DriverCtx* driverCtx,
@@ -65,7 +67,7 @@ public:
           name_(planNode->name().data()),
           planNode_(planNode) {}
 
-    // Constructor with spillConfig
+    // Constructor with spillConfig and operator type
     DPBaseOperator(
         int32_t operatorId,
         facebook::velox::exec::DriverCtx* driverCtx,
@@ -158,6 +160,10 @@ public:
         return qflows_;
     }
 
+    const std::shared_ptr<const facebook::velox::core::PlanNode> getPlanNode() const {
+        return planNode_;
+    }
+
     void setQflows(const std::vector<std::string>& qflows) {
         qflows_ = qflows;
     }
@@ -248,6 +254,59 @@ public:
         // return fromRawPointer(outputPtr);
         return nullptr;
     }
+};
+
+class ResizeOperator : public facebook::velox::exec::Operator {
+public:
+    ResizeOperator(
+        int32_t operatorId,
+        facebook::velox::exec::DriverCtx* driverCtx,
+        facebook::velox::RowTypePtr outputType)
+        : Operator(
+              driverCtx, outputType, operatorId, /*planNode->id()*/"", "resize") {
+
+        const auto& queryConfig = driverCtx->queryConfig();
+        maxOutputBatchSize_ = queryConfig.preferredOutputBatchRows();
+   }
+
+    void addInput(facebook::velox::RowVectorPtr input) override {
+        in_ = std::move(input);
+        cursor_ = 0;
+    }
+
+    bool needsInput() const override {
+        return !noMoreInput_ && !in_;
+    }
+
+    bool isFinished() override {
+        return !in_ && noMoreInput_;
+    }
+
+    facebook::velox::RowVectorPtr getOutput() override {
+        if(!in_) {
+            return nullptr;
+        }
+        int32_t remainingLength = in_->size() - cursor_;
+        GLUTEN_CHECK(remainingLength >= 0, "Invalid state");
+        if (remainingLength == 0) {
+          in_ = nullptr;
+          return nullptr;
+        }
+        int32_t sliceLength = std::min(maxOutputBatchSize_, remainingLength);
+        auto out = std::dynamic_pointer_cast<facebook::velox::RowVector>(in_->slice(cursor_, sliceLength));
+        cursor_ += sliceLength;
+        GLUTEN_CHECK(out != nullptr, "Invalid state");
+        return out;
+    }
+
+    facebook::velox::exec::BlockingReason isBlocked(facebook::velox::ContinueFuture* future) override {
+            return facebook::velox::exec::BlockingReason::kNotBlocked;
+    }
+
+private:
+    int32_t maxOutputBatchSize_;
+    facebook::velox::RowVectorPtr in_;
+    int32_t cursor_ = 0;
 };
 
 class DPFilter : public DPBaseOperator {
