@@ -646,7 +646,7 @@ object GlutenConfig {
   val GLUTEN_DP_MERGE_JOIN_ENABLED = "spark.gluten.dp.mergejoin.enabled"
   val GLUTEN_DP_BATCH_SIZE = "spark.gluten.dp.batchSize"
   val GLUTEN_DP_OP_FUSION_ENABLED = "spark.gluten.dp.opFusion.enabled"
-  val GLUTEN_DP_BATCH_RESIZER_ENABLED  = "spark.gluten.dp.batchResizer.enabled"
+  val GLUTEN_DP_BATCH_RESIZER_ENABLED = "spark.gluten.dp.batchResizer.enabled"
 
   var ins: GlutenConfig = _
 
